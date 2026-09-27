@@ -1,0 +1,2 @@
+# Only needed when reading the group through your own Telegram account (TELEGRAM_MODE=user)
+telethon>=1.36

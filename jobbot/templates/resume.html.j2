@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ p.full_name }} - Resume</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Latin Modern Roman", "LM Roman 10", "CMU Serif", "Times New Roman", "Liberation Serif", "DejaVu Serif", serif;
+    font-size: {{ font_pt }}pt; line-height: 1.22; color: #000;
+    padding: 0.45in 0.5in 0.4in 0.5in;
+  }
+  a { color: #000; text-decoration: none; }
+  h1 { font-size: 2.05em; font-variant: small-caps; letter-spacing: 0.02em; text-align: center; margin: 0 0 2pt; font-weight: 700; }
+  .contact { text-align: center; margin-bottom: 1pt; }
+  .links { text-align: center; margin-bottom: 4pt; }
+  .links a { text-decoration: underline; }
+  h2 {
+    font-size: 1.12em; font-variant: small-caps; font-weight: 700; letter-spacing: 0.02em;
+    border-bottom: 0.6pt solid #000; margin: {{ gap_pt }}pt 0 2.5pt; padding-bottom: 0.5pt;
+  }
+  .row { display: flex; justify-content: space-between; gap: 8pt; }
+  .row .l { font-weight: 700; }
+  .row.sub { font-style: italic; }
+  .row.sub .l { font-weight: 400; }
+  ul { margin: 1pt 0 {{ gap_pt / 2 }}pt 0; padding-left: 14pt; }
+  li { margin: 0 0 1.2pt; text-align: justify; }
+  .skills div { margin-bottom: 0.8pt; }
+  .skills b, .ach b { font-weight: 700; }
+  .summary { text-align: justify; margin: 0; }
+  .block { margin-bottom: 2pt; }
+</style>
+</head>
+<body>
+  <h1>{{ p.full_name }}</h1>
+  <div class="contact">{{ p.short_location }}{% if p.phone %} | {{ p.phone_country_code ~ ' ' if p.phone_country_code }}{{ p.phone }}{% endif %} | <a href="mailto:{{ p.email }}">{{ p.email }}</a></div>
+  <div class="links">
+    {%- set sep = joiner(" | ") -%}
+    {%- if p.linkedin %}{{ sep() }}<a href="{{ p.linkedin }}">LinkedIn</a>{% endif -%}
+    {%- if p.github %}{{ sep() }}<a href="{{ p.github }}">GitHub</a>{% endif -%}
+    {%- if p.leetcode %}{{ sep() }}<a href="{{ p.leetcode }}">LeetCode</a>{% endif -%}
+    {%- if p.portfolio %}{{ sep() }}<a href="{{ p.portfolio }}">Portfolio</a>{% endif -%}
+  </div>
+
+  <h2>Summary</h2>
+  <p class="summary">{{ r.summary }}</p>
+
+  <h2>Education</h2>
+  {% for e in r.education %}
+  <div class="block">
+    <div class="row"><span class="l">{{ e.school }}</span><span>{{ e.location }}</span></div>
+    <div class="row sub"><span class="l">{{ e.degree }}</span><span>{{ e.date }}</span></div>
+  </div>
+  {% endfor %}
+
+  <h2>Technical Skills</h2>
+  <div class="skills">
+    {% for g in r.skills %}<div><b>{{ g.label }}:</b> {{ g.items | join(", ") }}</div>{% endfor %}
+  </div>
+
+  <h2>Experience</h2>
+  {% for e in r.experience %}
+  <div class="block">
+    <div class="row"><span class="l">{{ e.company }}</span><span>{{ e.location }}</span></div>
+    {% for role in e.roles %}
+    <div class="row sub"><span class="l">{{ role.title }}</span><span>{{ role.dates }}</span></div>
+    <ul>{% for b in role.bullets %}<li>{{ b }}</li>{% endfor %}</ul>
+    {% endfor %}
+  </div>
+  {% endfor %}
+
+  {% if r.projects %}
+  <h2>Projects</h2>
+  {% for pr in r.projects %}
+  <div class="block">
+    <div><b>{{ pr.name }}</b>{% if pr.tech %} | <i>{{ pr.tech }}</i>{% endif %}</div>
+    <ul>{% for b in pr.bullets %}<li>{{ b }}</li>{% endfor %}</ul>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if r.achievements %}
+  <h2>Achievements</h2>
+  <div class="ach">
+    {% for a in r.achievements %}<div><b>{{ a.label }}:</b> {{ a.text }}</div>{% endfor %}
+  </div>
+  {% endif %}
+</body>
+</html>

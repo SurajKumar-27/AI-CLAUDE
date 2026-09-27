@@ -1,0 +1,38 @@
+# Copy this folder to data/ and replace everything with your own details.
+# Anything left null is "unknown": if a form requires it, the bot asks you instead of guessing.
+personal:
+  first_name: Asha
+  last_name: Rao
+  email: asha.rao@example.com
+  phone: "9000000000"
+  phone_country_code: "+91"
+  city: Bengaluru
+  state: Karnataka
+  country: India
+  linkedin: https://www.linkedin.com/in/example
+  github: https://github.com/example
+  leetcode: ""
+  portfolio: ""
+
+facts:
+  current_company: Example Corp
+  current_title: Software Engineer
+  total_experience: "2 years"
+  highest_degree: B.Tech Computer Science
+  university: Example Institute of Technology
+  graduation: May 2023
+  cgpa: "8.9 / 10"
+  notice_period: "30 days"
+  current_ctc: null
+  expected_ctc: null
+  authorized_to_work_in_india: true
+  requires_visa_sponsorship_for_india: false
+  willing_to_relocate: true
+  preferred_locations: "Bengaluru, Hyderabad, Remote"
+  open_to_remote: true
+  open_to_hybrid_or_onsite: true
+  gender: null
+  eeo_default_answer: "Decline to self-identify"
+  how_did_you_hear: "Job posting shared online"
+
+extra_skills: [GraphQL]

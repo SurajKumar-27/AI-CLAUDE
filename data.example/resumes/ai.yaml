@@ -1,0 +1,25 @@
+summary: >-
+  AI engineer with 2 years of experience building LLM features and RAG pipelines in Python.
+education:
+  - school: Example Institute of Technology
+    location: Bengaluru, India
+    degree: B.Tech in Computer Science
+    date: May 2023
+skills:
+  - label: AI/ML
+    items: [LLMs, RAG, LangChain, Prompt Engineering, NLP]
+  - label: Languages
+    items: [Python, TypeScript, SQL]
+  - label: Backend
+    items: [FastAPI, Node.js, PostgreSQL, Docker]
+experience:
+  - company: Example Corp
+    location: Bengaluru, India
+    roles:
+      - title: Software Engineer
+        dates: Jun 2023 – Present
+        bullets:
+          - Built a RAG support assistant with LangChain and PostgreSQL that answers 1,000+ questions a week.
+          - Shipped FastAPI services that wrap LLM calls with caching and evaluation.
+projects: []
+achievements: []

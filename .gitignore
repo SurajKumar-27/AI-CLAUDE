@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+# Personal data and run output never go into this (public) repo
+data/
+state/
+output/
+*.session
+.env
