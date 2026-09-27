@@ -9,3 +9,6 @@ state/
 output/
 *.session
 .env
+
+# Paperverse build output (regenerate with: python3 paperverse/build.py)
+paperverse/dist/

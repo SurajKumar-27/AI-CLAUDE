@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Paperverse Observatory</title>
+<meta name="description" content="The AI research papers that matter, explained from zero with animated, interactive slide decks.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="#" aria-label="Paperverse home">
+    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+      <circle cx="16" cy="16" r="4" fill="#ffe9b8"/>
+      <ellipse cx="16" cy="16" rx="14" ry="6" fill="none" stroke="#f5b642" stroke-width="1.5" transform="rotate(-24 16 16)"/>
+      <ellipse cx="16" cy="16" rx="14" ry="6" fill="none" stroke="#5ec8ff" stroke-width="1.5" transform="rotate(36 16 16)"/>
+      <circle cx="28" cy="10" r="2" fill="#ff8570"/>
+    </svg>
+    <span class="brand-name">Paperverse</span>
+    <span class="brand-sub">AI papers, explained from zero</span>
+  </a>
+  <nav aria-label="Sections">
+    <a href="#top-path">Start here</a>
+    <a href="#top-papers">All papers</a>
+    <a href="#top-method">How they were picked</a>
+    <a href="#top-glossary">Glossary</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <div class="eyebrow">An observatory of <span id="stat-papers">28</span> papers · <span id="stat-slides">250</span> slides</div>
+      <h1 id="hero-title">The AI papers that <em>matter</em>, taught from zero.</h1>
+      <p>Every star is a research paper. The closer to the core, the older it is. Each spiral arm is one kind of idea: how models are built, how they learn, how they reason and act, how they run fast, and what's happening inside them.</p>
+      <p>Click a star to open its deck. Each one explains the problem in plain words, animates the idea, gives you something to play with, shows the results to scale, and ends with a quick quiz.</p>
+      <div class="hero-actions">
+        <button class="btn primary" type="button" onclick="PV.openDeck('primer',0)">Start with “LLMs from zero” →</button>
+        <a class="btn ghost" href="#top-papers">Browse all papers</a>
+      </div>
+    </div>
+    <div class="galaxy-wrap" id="galaxy"></div>
+  </section>
+
+  <section class="section" id="top-path" aria-labelledby="path-title">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow">Learning path</div>
+        <h2 id="path-title">New to all of this? Read these in order.</h2>
+        <p>Eight decks that take you from “what is a token” to the self-improving agents published this month. Each one takes about ten minutes.</p>
+      </div>
+    </div>
+    <div class="path" id="path"></div>
+  </section>
+
+  <section class="section" id="top-papers" aria-labelledby="papers-title">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow">The collection · <span id="count"></span></div>
+        <h2 id="papers-title">Every paper, as a slide deck</h2>
+        <p>Foundations are the papers that nearly every model you use today is built on. Frontier papers are 2025–26 work that introduces a new pattern people are starting to copy.</p>
+      </div>
+      <div class="filters" id="filters"></div>
+    </div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <section class="section" id="top-method" aria-labelledby="method-title">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow">Selection</div>
+        <h2 id="method-title">How these papers were picked</h2>
+        <p>Thousands of AI papers appear on arXiv each month. A paper made this list if it passed at least one of these tests. The meters on each deck (impact, new idea, momentum) are an editorial judgement, not a citation count.</p>
+      </div>
+    </div>
+    <div class="method">
+      <div><h3>It changed what everyone builds</h3><p>Transformers, RLHF, LoRA, FlashAttention and vLLM are inside almost every production model and serving stack. You can't follow the field without them.</p></div>
+      <div><h3>It introduced a pattern others copied</h3><p>Chain-of-thought, ReAct, test-time compute and GRPO-style reasoning RL each started a new line of work within months of release.</p></div>
+      <div><h3>It's rising fast right now</h3><p>2026 papers that the community is upvoting and building on: hybrid Mamba–Transformer models, attention over depth, next-concept prediction, and agents that improve their own harness.</p></div>
+      <div><h3>It explains something surprising</h3><p>Interpretability work that shows what's actually happening inside, such as monosemantic features, attention sinks and massive activations.</p></div>
+    </div>
+  </section>
+
+  <section class="section" id="top-glossary" aria-labelledby="gloss-title">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow">Glossary · <span id="gcount"></span> terms</div>
+        <h2 id="gloss-title">Words you'll meet</h2>
+        <p>Collected from every deck. The link after each term opens the deck that explains it.</p>
+      </div>
+    </div>
+    <dl class="glossary" id="glossary"></dl>
+  </section>
+</main>
+
+<footer class="foot">
+  Paperverse · explanations simplify on purpose, so follow the “Read the original” link on each deck for the full detail. Numbers quoted on the slides come from the papers themselves. Charts marked “illustrative” show the shape of an idea, not measured data.
+</footer>
+
+<div class="deck" id="deck" hidden role="dialog" aria-modal="true" aria-label="Paper slide deck">
+  <div class="deck-bar">
+    <button class="close" type="button">✕ Observatory</button>
+    <div class="deck-title"></div>
+    <div class="deck-count"></div>
+  </div>
+  <div class="deck-stage"></div>
+  <div class="deck-nav">
+    <button class="arrow prev" type="button" aria-label="Previous slide">←</button>
+    <div class="dots"></div>
+    <span class="kbd-hint">← → keys · Esc to close</span>
+    <button class="arrow next" type="button" aria-label="Next slide">→</button>
+  </div>
+</div>
+
+<!-- build:three -->
+<script src="vendor/three.min.js"></script>
+<!-- endbuild -->
+<script src="js/core.js"></script>
+<script src="js/viz/generic.js"></script>
+<script src="js/viz/extra.js"></script>
+<script src="js/papers/primer.js"></script>
+<script src="js/papers/attention.js"></script>
+<script src="js/papers/gpt3.js"></script>
+<script src="js/papers/rag.js"></script>
+<script src="js/papers/lora.js"></script>
+<script src="js/papers/cot.js"></script>
+<script src="js/papers/chinchilla.js"></script>
+<script src="js/papers/instructgpt.js"></script>
+<script src="js/papers/flash.js"></script>
+<script src="js/papers/react.js"></script>
+<script src="js/papers/specdec.js"></script>
+<script src="js/papers/cai.js"></script>
+<script src="js/papers/dpo.js"></script>
+<script src="js/papers/vllm.js"></script>
+<script src="js/papers/mamba.js"></script>
+<script src="js/papers/mixtral.js"></script>
+<script src="js/papers/sae.js"></script>
+<script src="js/papers/ttc.js"></script>
+<script src="js/papers/r1.js"></script>
+<script src="js/papers/llada.js"></script>
+<script src="js/papers/mamba3.js"></script>
+<script src="js/papers/sinks.js"></script>
+<script src="js/papers/attnres.js"></script>
+<script src="js/papers/nemotron.js"></script>
+<script src="js/papers/gdn2.js"></script>
+<script src="js/papers/skillopt.js"></script>
+<script src="js/papers/ncp.js"></script>
+<script src="js/papers/rrsi.js"></script>
+<script src="js/deck.js"></script>
+<script src="js/galaxy.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

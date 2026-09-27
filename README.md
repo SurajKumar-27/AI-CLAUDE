@@ -115,3 +115,9 @@ pip install -r requirements-dev.txt && pytest
 - GitHub Actions is free for public repositories. A private repository on the free plan gets 2,000 minutes a month: about 1 minute per run with work, and a few seconds for empty checks.
 - GitHub pauses scheduled workflows after 60 days without commits to the repository. Re-enable it on the Actions tab.
 - Web forms vary a lot. Unusual custom widgets can defeat the filler, and then you get a "Needs you" report with everything prepared. Check the screenshot before tapping Submit, at least for the first few jobs.
+
+---
+
+# Paperverse: AI research papers, taught from zero
+
+This repo also contains [`paperverse/`](paperverse/), an interactive observatory of 27 AI research papers (plus a zero-knowledge primer) explained as animated slide decks: Transformers, RLHF, LoRA, FlashAttention, Mamba and DeepSeek-R1 through to 2026 frontier work such as Mamba-3, Attention Residuals, Next Concept Prediction and self-improving agent harnesses. Open `paperverse/index.html` in a browser. See [paperverse/README.md](paperverse/README.md).
