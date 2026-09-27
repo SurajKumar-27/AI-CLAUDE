@@ -54,10 +54,7 @@ In the repo, go to *Settings → Secrets and variables → Actions → New repos
 | `TELEGRAM_BOT_TOKEN` | from BotFather |
 | `TELEGRAM_SOURCE_CHAT` | the job group's ID (`-100…`) or `@username` |
 | `TELEGRAM_NOTIFY_CHAT_ID` | your own Telegram user ID (reports go here) |
-| `JOBBOT_PROFILE_YAML` | the full contents of `data/profile.yaml` |
-| `JOBBOT_RESUME_FULLSTACK_YAML` | contents of `data/resumes/fullstack.yaml` |
-| `JOBBOT_RESUME_AI_YAML` | contents of `data/resumes/ai.yaml` |
-| `JOBBOT_STATE_KEY` | any long random string (encrypts the saved state) |
+| `JOBBOT_STATE_KEY` | the key that unlocks `data.enc` (your encrypted profile + resumes) and the saved state |
 
 Optional **variables** (same page, *Variables* tab):
 
@@ -66,11 +63,11 @@ Optional **variables** (same page, *Variables* tab):
 - `JOBBOT_MIN_FIT`: skip jobs whose fit score is below this value (0–100).
 - `TELEGRAM_MODE=user`: see step 5.
 
-Your personal details never go into this repository, which is public. `data/` is git-ignored, and the workflow rebuilds it from the secrets on each run.
+Your personal details are only in the repository in encrypted form (`data.enc`, AES-256, unlocked by `JOBBOT_STATE_KEY`). `data/` itself is git-ignored. After editing `data/*.yaml`, run `JOBBOT_STATE_KEY=... scripts/data.sh encrypt` and commit `data.enc`. Alternatively, put the three files in the secrets `JOBBOT_PROFILE_YAML`, `JOBBOT_RESUME_FULLSTACK_YAML` and `JOBBOT_RESUME_AI_YAML`, which take precedence over `data.enc`.
 
 ### 4. Turn it on
 
-GitHub only runs scheduled workflows from the **default branch**, so merge this branch into `main`. The workflow then checks Telegram every 10 minutes. Runs with nothing new finish in a few seconds without installing anything. You can also send a job link **directly to your bot** at any time, and it will be processed on the next run.
+The workflow runs from the repository's **default branch** and checks Telegram every 10 minutes. Runs with nothing new finish in a few seconds without installing anything. You can also send a job link **directly to your bot** at any time, and it will be processed on the next run.
 
 To run it right away: *Actions → jobbot → Run workflow*, optionally with a single job URL.
 
