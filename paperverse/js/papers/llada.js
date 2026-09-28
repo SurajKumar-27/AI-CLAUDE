@@ -18,19 +18,21 @@
       const lane = (y, label, revealed, flicker) => {
         PV.text(ctx, label, 20, y - 30, { size: 12, font: FONT.mono, color: C.ink3 });
         ctx.font = `700 12.5px ${FONT.body}`;
-        let x = 20;
-        const cw = (W - 40) / n - 5;
+        // phones: two rows of six so every word stays readable
+        const perRow = W < 520 ? 6 : n;
+        const cw = (W - 40) / perRow - 5;
         for (let i = 0; i < n; i++) {
           const on = revealed[i];
           const fl = flicker && flicker[i];
-          PV.box(ctx, x, y - 14, cw, 30, { r: 6, fill: on ? PV.alpha(api.color, 0.3) : fl ? PV.alpha(C.bad, 0.2) : C.panel, stroke: on ? api.color : C.line2 });
-          PV.text(ctx, on ? target[i] : "▒", x + cw / 2, y + 1, { size: on ? Math.min(12.5, cw * 0.16) : 12, align: "center", weight: 700, color: on ? C.ink : C.ink3 });
-          x += cw + 5;
+          const x = 20 + (i % perRow) * (cw + 5), yy = y + Math.floor(i / perRow) * 38;
+          PV.box(ctx, x, yy - 14, cw, 30, { r: 6, fill: on ? PV.alpha(api.color, 0.3) : fl ? PV.alpha(C.bad, 0.2) : C.panel, stroke: on ? api.color : C.line2 });
+          const word = on ? PV.fit(ctx, target[i], cw - 6, 12.5, { weight: 700 }) : { text: "▒", size: 12 };
+          PV.text(ctx, word.text, x + cw / 2, yy + 1, { size: word.size, align: "center", weight: 700, color: on ? C.ink : C.ink3, noFit: true });
         }
       };
       // autoregressive: one token per step, strictly left to right
       const ar = target.map((_, i) => i < k);
-      lane(H * 0.34, `Autoregressive: step ${Math.min(k, n)} of ${n} (one token per step, left → right)`, ar);
+      lane(H * 0.34, W < 520 ? `Autoregressive: step ${Math.min(k, n)}/${n} · 1 token per step` : `Autoregressive: step ${Math.min(k, n)} of ${n} (one token per step, left → right)`, ar);
       // diffusion: in `steps` rounds, unmask the most confident masked positions; low-confidence ones may be remasked
       const perStep = Math.ceil(n / steps);
       const dk = Math.min(steps, k);
@@ -43,7 +45,7 @@
         if (Math.sin(t * 6) > 0.3) { shown.delete(weakest); flicker[weakest] = true; }
       }
       const df = target.map((_, i) => shown.has(i));
-      lane(H * 0.68, `Diffusion (LLaDA): step ${dk} of ${steps} (${perStep} tokens per step, most-confident first)`, df, flicker);
+      lane(H * 0.68, W < 520 ? `Diffusion: step ${dk}/${steps} · ${perStep} tokens per step` : `Diffusion (LLaDA): step ${dk} of ${steps} (${perStep} tokens per step, most-confident first)`, df, flicker);
       cap.set(`Same sentence. Autoregressive needs <b>${n}</b> steps. Diffusion takes <b>${steps}</b>, filling positions in any order and re-masking shaky guesses (red flash).`);
     });
     const ctl = PV.controls(root);

@@ -35,7 +35,7 @@
     const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 400);
     const tip = h("div", { class: "galaxy-tip", hidden: true });
     wrap.appendChild(tip);
-    wrap.appendChild(h("div", { class: "galaxy-hint" }, "DRAG TO ORBIT · SCROLL TO ZOOM · CLICK A STAR"));
+    wrap.appendChild(h("div", { class: "galaxy-hint" }, window.matchMedia("(pointer: coarse)").matches ? "DRAG SIDEWAYS TO ORBIT · TAP A STAR" : "DRAG TO ORBIT · SCROLL TO ZOOM · CLICK A STAR"));
     const legend = h("div", { class: "galaxy-legend" });
     Object.entries(PV.tracks).forEach(([k, t]) => {
       if (k === "primer") return;
@@ -200,13 +200,16 @@
     const cvs = renderer.domElement;
     cvs.setAttribute("aria-label", "3D galaxy of research papers. Every paper is also listed below.");
     cvs.setAttribute("role", "img");
-    cvs.addEventListener("pointerdown", (e) => { dragging = true; moved = 0; lastX = e.clientX; lastY = e.clientY; cvs.setPointerCapture(e.pointerId); });
-    cvs.addEventListener("pointermove", (e) => {
+    cvs.style.touchAction = "pan-y"; // sideways drag orbits, vertical swipe still scrolls the page
+    const setMouse = (e) => {
       const r = cvs.getBoundingClientRect();
-      mouse.x = ((e.clientX - r.left) / r.width) * 2 - 1;
-      mouse.y = -((e.clientY - r.top) / r.height) * 2 + 1;
       mouse.px = e.clientX - r.left;
       mouse.py = e.clientY - r.top;
+      mouse.on = true;
+    };
+    cvs.addEventListener("pointerdown", (e) => { setMouse(e); dragging = true; moved = 0; lastX = e.clientX; lastY = e.clientY; });
+    cvs.addEventListener("pointermove", (e) => {
+      if (e.pointerType === "mouse" || dragging) setMouse(e);
       if (!dragging) return;
       const dx = e.clientX - lastX, dy = e.clientY - lastY;
       moved += Math.abs(dx) + Math.abs(dy);
@@ -215,19 +218,41 @@
       lastX = e.clientX; lastY = e.clientY;
       if (moved > 4) autoSpin = false;
     });
-    cvs.addEventListener("pointerup", () => {
+    cvs.addEventListener("pointerup", (e) => {
       dragging = false;
-      if (moved < 6 && hovered) PV.openDeck(hovered.p.id, 0);
+      if (e.pointerType !== "mouse") { mouse.on = false; tip.hidden = true; }
+      if (moved >= 8) return;
+      // a tap or click opens the nearest star; touch gets a bigger target than a mouse
+      const hit = pick(mouse.px, mouse.py, e.pointerType === "mouse" ? 18 : 34);
+      if (hit) PV.openDeck(hit.p.id, 0);
     });
-    cvs.addEventListener("pointerleave", () => { mouse.x = 9; hovered = null; tip.hidden = true; });
+    cvs.addEventListener("pointercancel", () => { dragging = false; });
+    cvs.addEventListener("pointerleave", (e) => { dragging = false; if (e.pointerType === "mouse") { mouse.on = false; } });
     cvs.addEventListener("wheel", (e) => {
       e.preventDefault();
       targetR = PV.clamp(targetR * (1 + Math.sign(e.deltaY) * 0.08), 7, 34);
     }, { passive: false });
 
-    const ray = new THREE.Raycaster();
-    const mouse = { x: 9, y: 9, px: 0, py: 0 };
+    const mouse = { px: 0, py: 0, on: false };
     let hovered = null;
+    // nearest star to a screen point, within maxPx (screen-space picking is kinder to fingers than ray casting)
+    const tmp = new THREE.Vector3();
+    function pick(px, py, maxPx) {
+      const w = cvs.clientWidth, hgt = cvs.clientHeight;
+      let best = null, bestD = maxPx;
+      stars.forEach((s) => {
+        s.spr.getWorldPosition(tmp).project(camera);
+        if (tmp.z > 1) return;
+        const d = Math.hypot((tmp.x * 0.5 + 0.5) * w - px, (-tmp.y * 0.5 + 0.5) * hgt - py);
+        if (d < bestD) { bestD = d; best = s; }
+      });
+      return best;
+    }
+    // zoom buttons (pinching would fight with page scrolling on phones)
+    const zoom = h("div", { class: "galaxy-zoom" },
+      h("button", { type: "button", "aria-label": "Zoom in", onclick: () => (targetR = PV.clamp(targetR * 0.8, 7, 34)) }, "+"),
+      h("button", { type: "button", "aria-label": "Zoom out", onclick: () => (targetR = PV.clamp(targetR * 1.25, 7, 34)) }, "−"));
+    wrap.appendChild(zoom);
 
     function resize() {
       const r = wrap.getBoundingClientRect();
@@ -255,9 +280,7 @@
       galaxy.rotation.y += dt * 0.012;
       core.scale.setScalar(2.6 + Math.sin(t * 1.3) * 0.15);
 
-      ray.setFromCamera(mouse, camera);
-      const hits = ray.intersectObjects(stars.map((s) => s.spr));
-      const now = hits.length ? stars.find((s) => s.spr === hits[0].object) : null;
+      const now = mouse.on && !dragging ? pick(mouse.px, mouse.py, 18) : null;
       if (now !== hovered) {
         hovered = now;
         threads.forEach((th) => {
@@ -274,14 +297,16 @@
         } else tip.hidden = true;
       }
       if (hovered) {
-        tip.style.left = PV.clamp(mouse.px, 130, wrap.clientWidth - 130) + "px";
+        tip.style.left = PV.clamp(mouse.px, Math.min(130, wrap.clientWidth / 2), Math.max(wrap.clientWidth / 2, wrap.clientWidth - 130)) + "px";
         tip.style.top = Math.max(110, mouse.py) + "px";
       }
       stars.forEach((s) => {
         const hot = s === hovered;
         const k = s.spr.userData.base * (hot ? 1.6 : 1 + 0.07 * Math.sin(t * 2 + s.spr.userData.phase));
         s.spr.scale.set(k, k, 1);
-        s.lab.material.opacity = hot ? 1 : s.p.era === "frontier" || s.p.track === "primer" ? 0.95 : 0.62;
+        // on small screens only the primer keeps a permanent label (the rest pile up); tapping a star opens it
+        const small = cvs.clientWidth < 600;
+        s.lab.material.opacity = hot ? 1 : s.p.track === "primer" ? 0.95 : small ? 0 : s.p.era === "frontier" ? 0.95 : 0.62;
       });
       renderer.render(scene, camera);
     }

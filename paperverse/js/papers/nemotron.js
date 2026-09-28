@@ -20,19 +20,17 @@
       });
       PV.text(ctx, "layer 1", 20, top + 80, { size: 10.5, font: FONT.mono, color: C.ink3 });
       PV.text(ctx, "layer 88", W - 20, top + 80, { size: 10.5, font: FONT.mono, color: C.ink3, align: "right" });
-      let lx = 20;
-      ["M", "E", "A"].forEach((k) => {
+      // legend: one line per layer type (always fits, on any width)
+      ["M", "E", "A"].forEach((k, i) => {
         const cnt = pat.filter((x) => x === k).length;
-        ctx.fillStyle = col[k]; ctx.fillRect(lx, top + 100, 12, 12);
-        PV.text(ctx, `${name[k]} ×${cnt}`, lx + 18, top + 106, { size: 11.5, color: C.ink2 });
-        lx += 30 + ctx.measureText(`${name[k]} ×${cnt}`).width;
-        if (lx > W - 200) lx = 20;
+        ctx.fillStyle = col[k]; ctx.fillRect(20, top + 96 + i * 18, 12, 12);
+        PV.text(ctx, `${name[k]} ×${cnt}`, 38, top + 102 + i * 18, { size: 11.5, color: C.ink2 });
       });
       // KV memory: all-attention vs hybrid, as context grows
       const kvAll = n / 2, kvHyb = pat.filter((x) => x === "A").length; // attention layers that keep a KV cache
-      const by = top + 150, bw = W - 40;
+      const by = top + 170, bw = W - 40;
       const scale = (kv) => (kv * ctxLen) / (kvAll * 1000);
-      PV.text(ctx, `KV cache at ${ctxLen}k tokens of context (grows with context length)`, 20, by, { size: 12, weight: 700 });
+      PV.text(ctx, W < 520 ? `KV cache at ${ctxLen}k tokens of context` : `KV cache at ${ctxLen}k tokens of context (grows with context length)`, 20, by, { size: 12, weight: 700 });
       PV.text(ctx, "if every mixer layer were attention", 20, by + 22, { size: 11, color: C.ink3 });
       PV.box(ctx, 20, by + 30, bw, 14, { r: 4, fill: C.panel });
       PV.box(ctx, 20, by + 30, bw * scale(kvAll), 14, { r: 4, fill: C.bad });
@@ -133,7 +131,8 @@
           PV.box(ctx, x + 1, v >= 0 ? mid - v * amp : mid, bw * 0.42, Math.abs(v * amp) + 1, { r: 1, fill: PV.alpha(C.ink2, 0.6) });
           PV.box(ctx, x + bw * 0.46, qv >= 0 ? mid - qv * amp : mid, bw * 0.42, Math.abs(qv * amp) + 1, { r: 1, fill: api.color });
         });
-        PV.text(ctx, mode === "block" ? `block ${bi + 1}: own scale ${sc.toFixed(2)}` : `shared scale ${sc.toFixed(2)}`, 30 + bi * 16 * bw, top - 12, { size: 11, font: FONT.mono, color: C.ink3 });
+        const lbl = mode === "block" ? (W < 520 ? `scale ${sc.toFixed(2)}` : `block ${bi + 1}: own scale ${sc.toFixed(2)}`) : `shared scale ${sc.toFixed(2)}`;
+        if (mode === "block" || bi === 0) PV.text(ctx, lbl, 30 + bi * 16 * bw, top - 12, { size: 11, font: FONT.mono, color: C.ink3 });
       });
       ctx.strokeStyle = C.line2; ctx.beginPath(); ctx.moveTo(30, mid); ctx.lineTo(W - 30, mid); ctx.stroke();
       PV.text(ctx, `total rounding error: ${err.toFixed(2)}`, 30, H - bot + 30, { size: 13, weight: 700, color: mode === "block" ? C.good : C.bad });

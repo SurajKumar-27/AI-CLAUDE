@@ -145,13 +145,14 @@
       ws.forEach((w, i) => {
         const x = colX(i);
         const a1 = phase >= 1 ? 1 : 0.25;
-        PV.box(ctx, x - 44, yK - 14, 88, 28, { r: 7, fill: C.panel, stroke: C.line2 });
-        PV.text(ctx, "key: " + w, x, yK, { size: 11.5, align: "center", alpha: a1 });
+        const kw = Math.min(88, (W * 0.86) / ws.length - 4);
+        PV.box(ctx, x - kw / 2, yK - 14, kw, 28, { r: 7, fill: C.panel, stroke: C.line2 });
+        PV.text(ctx, PV.fit(ctx, (kw > 70 ? "key: " : "") + w, kw - 6, 11.5).text, x, yK, { size: kw > 70 ? 11.5 : 10.5, align: "center", alpha: a1 });
         if (phase >= 1) {
           ctx.strokeStyle = PV.alpha(C.glow, 0.25 + 0.15 * Math.sin(t * 4 + i));
           ctx.lineWidth = 1.2;
           ctx.beginPath(); ctx.moveTo(W / 2, yQ + 16); ctx.lineTo(x, yK - 14); ctx.stroke();
-          PV.text(ctx, "score " + scores[i].toFixed(1), x, yK + 24, { size: 10.5, font: FONT.mono, align: "center", color: C.ink3 });
+          PV.text(ctx, (W < 520 ? "" : "score ") + scores[i].toFixed(1), x, yK + 24, { size: 10.5, font: FONT.mono, align: "center", color: C.ink3 });
         }
         if (phase >= 2) {
           const bh = wts[i] * (H * 0.2);
@@ -159,7 +160,8 @@
           PV.text(ctx, Math.round(wts[i] * 100) + "%", x, yS + 44, { size: 11, font: FONT.mono, align: "center", color: C.ink });
         }
         if (phase >= 3) {
-          PV.box(ctx, x - 30, yV - 10, 60, 20, { r: 5, fill: PV.alpha(valColors[i], 0.25 + wts[i]), stroke: valColors[i] });
+          const vw = Math.min(60, (W * 0.86) / ws.length - 6);
+          PV.box(ctx, x - vw / 2, yV - 10, vw, 20, { r: 5, fill: PV.alpha(valColors[i], 0.25 + wts[i]), stroke: valColors[i] });
           PV.text(ctx, "value", x, yV, { size: 10.5, align: "center" });
         }
       });

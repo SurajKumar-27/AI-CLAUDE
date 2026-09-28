@@ -21,23 +21,31 @@
     const st = PV.canvasLoop(root, (ctx, W, H, t, dt) => {
       pt += dt;
       if (pt > 3 && !PV.reduceMotion) { pt = 0; phase = (phase + 1) % phases.length; cap.set(phases[phase]); }
-      const top = 70, tw = (W - 40) / toks.length;
-      const yT = top, yC = top + 90, yQ = top + 160, yP = top + 240;
+      // wide: one row of tokens. phones: one column per concept, its 4 tokens stacked
+      const narrow = W < 520;
+      const top = narrow ? 30 : 70;
+      const colW = (W - 40) / M, tw = (W - 40) / toks.length;
+      const colX = (m) => 20 + m * colW;
+      const tokBox = (i) => narrow
+        ? { x: colX(Math.floor(i / k)) + 4, y: top + (i % k) * 27, w: colW - 8 }
+        : { x: 20 + i * tw + 1, y: top, w: tw - 2 };
+      const yT = top, yTend = narrow ? top + k * 27 : top + 30;
+      const yC = yTend + 52, yQ = yC + 70, yP = yQ + 80;
       // tokens
       toks.forEach((tk, i) => {
         const g = Math.floor(i / k);
         const on = phase >= 1;
-        PV.box(ctx, 20 + i * tw + 1, yT, tw - 2, 30, { r: 5, fill: on ? PV.alpha(palette[g % 5], 0.25) : C.panel, stroke: on ? palette[g % 5] : C.line2 });
-        const ft = PV.fit(ctx, tk.trim(), tw - 6, 12, { weight: 700 });
-        PV.text(ctx, ft.text, 20 + i * tw + tw / 2, yT + 15, { size: ft.size, align: "center", weight: 700 });
+        const b = tokBox(i);
+        PV.box(ctx, b.x, b.y, b.w, narrow ? 24 : 30, { r: 5, fill: on ? PV.alpha(palette[g % 5], 0.25) : C.panel, stroke: on ? palette[g % 5] : C.line2 });
+        PV.text(ctx, tk.trim(), b.x + b.w / 2, b.y + (narrow ? 12 : 15), { size: 12, align: "center", weight: 700 });
       });
       PV.text(ctx, "tokens", 20, yT - 12, { size: 10.5, font: FONT.mono, color: C.ink3 });
       // concepts
       if (phase >= 1) {
         for (let m = 0; m < M; m++) {
-          const x = 20 + m * k * tw, w = k * tw;
+          const x = colX(m), w = colW;
           ctx.strokeStyle = PV.alpha(palette[m % 5], 0.6);
-          ctx.beginPath(); ctx.moveTo(x + w / 2, yT + 32); ctx.lineTo(x + w / 2, yC - 4); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(x + w / 2, yTend + 2); ctx.lineTo(x + w / 2, yC - 4); ctx.stroke();
           PV.box(ctx, x + 6, yC, w - 12, 34, { r: 8, fill: PV.alpha(palette[m % 5], 0.35), stroke: palette[m % 5] });
           PV.text(ctx, `concept ${m + 1}`, x + w / 2, yC + 17, { size: 12, weight: 700, align: "center" });
         }
@@ -46,35 +54,42 @@
       // quantised codes
       if (phase >= 2) {
         for (let m = 0; m < M; m++) {
-          const x = 20 + m * k * tw + 8, w = k * tw - 16, sw = w / 8;
-          codes[m].forEach((c, s) => {
-            PV.box(ctx, x + s * sw + 1, yQ, sw - 2, 30, { r: 3, fill: PV.alpha(palette[c % 5], 0.25 + (c / 128) * 0.6) });
-            if (sw > 22) PV.text(ctx, String(c), x + s * sw + sw / 2, yQ + 15, { size: 9.5, font: FONT.mono, align: "center" });
+          const x = colX(m) + 8, w = colW - 16, sw = w / 8;
+          codes[m].forEach((c, sg) => {
+            PV.box(ctx, x + sg * sw + 1, yQ, sw - 2, 30, { r: 3, fill: PV.alpha(palette[c % 5], 0.25 + (c / 128) * 0.6) });
+            if (sw > 22) PV.text(ctx, String(c), x + sg * sw + sw / 2, yQ + 15, { size: 9.5, font: FONT.mono, align: "center" });
           });
         }
-        PV.text(ctx, "codes: 8 of the 32 segments shown, each one of 128 codewords", 20, yQ - 12, { size: 10.5, font: FONT.mono, color: C.ink3 });
+        PV.text(ctx, narrow ? "codes: 8 of 32 segments, 128 codewords each" : "codes: 8 of the 32 segments shown, each one of 128 codewords", 20, yQ - 12, { size: 10.5, font: FONT.mono, color: C.ink3 });
       }
       // concept module predicting next
       if (phase >= 3) {
-        const x = 20 + (M - 1) * k * tw + 8, w = k * tw - 16;
+        const x = colX(M - 1) + 8, w = colW - 16;
         const bx = Math.min(W - w - 20, x);
         PV.box(ctx, 20, yP, W - 40, 40, { r: 10, fill: C.panel2, stroke: api.color });
-        PV.text(ctx, "Concept module: concepts 1…2 → predict concept 3", 34, yP + 20, { size: 12.5, weight: 700 });
+        PV.text(ctx, narrow ? "Concept module: 1…2 → predict 3" : "Concept module: concepts 1…2 → predict concept 3", 34, yP + 20, { size: 12.5, weight: 700 });
         const glowA = 0.5 + 0.5 * Math.sin(t * 4);
         ctx.shadowColor = C.glow; ctx.shadowBlur = 14 * glowA;
         PV.box(ctx, bx, yP + 50, w, 26, { r: 6, fill: PV.alpha(C.glow, 0.25), stroke: C.glow });
         ctx.shadowBlur = 0;
-        PV.text(ctx, PV.fit(ctx, "ĉ₃ = weighted mix of codewords", w - 8, 11).text, bx + w / 2, yP + 63, { size: 11, align: "center", color: C.glow });
+        PV.text(ctx, narrow ? "ĉ₃" : "ĉ₃ = weighted mix of codewords", bx + w / 2, yP + 63, { size: 11, align: "center", color: C.glow });
       }
       if (phase >= 4) {
-        const x = 20 + (M - 1) * k * tw;
-        for (let i = 0; i < k; i++) {
-          const tx = x + i * tw + tw / 2;
-          PV.arrow(ctx, tx, yP + 48, tx, yT + 34, { color: PV.alpha(C.glow, 0.7), lw: 1.5 });
+        if (narrow) {
+          const x = colX(M - 1) + colW - 10;
+          PV.arrow(ctx, x, yP + 48, x, yTend + 2, { color: PV.alpha(C.glow, 0.7), lw: 1.5 });
+          PV.text(ctx, "added back to these tokens' positions", 20, yP + 94, { size: 11.5, color: C.glow });
+        } else {
+          const x = 20 + (M - 1) * k * tw;
+          for (let i = 0; i < k; i++) {
+            const tx = x + i * tw + tw / 2;
+            PV.arrow(ctx, tx, yP + 48, tx, yT + 34, { color: PV.alpha(C.glow, 0.7), lw: 1.5 });
+          }
+          PV.text(ctx, "added to these token positions to guide the next words", x, yP + 94, { size: 11.5, color: C.glow });
         }
-        PV.text(ctx, "added to these token positions to guide the next words", x, yP + 94, { size: 11.5, color: C.glow });
       }
     });
+    st.phoneHeight(520);
     const ctl = PV.controls(root);
     ctl.button("◀", () => { phase = (phase + phases.length - 1) % phases.length; pt = -20; cap.set(phases[phase]); });
     ctl.button("▶ next step", () => { phase = (phase + 1) % phases.length; pt = -20; cap.set(phases[phase]); });

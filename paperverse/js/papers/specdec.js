@@ -25,29 +25,37 @@
     const st = PV.canvasLoop(root, (ctx, W, H, t, dt) => {
       timer += dt;
       if (timer > 1.3) { timer = 0; step(); }
-      const top = 56, rowH = Math.min(52, (H - top - 150) / 6);
+      const top = W < 520 ? 30 : 56, rowH = Math.min(52, (H - top - 150) / 6);
       rounds.forEach((r, ri) => {
+        const narrow = W < 520;
         const y = top + ri * rowH;
-        PV.text(ctx, `big-model call #${calls - rounds.length + ri + 1}`, 14, y + 14, { size: 10.5, font: FONT.mono, color: C.ink3 });
-        let x = 150;
+        // phones: the call label sits above its row of draft tokens
+        PV.text(ctx, `big-model call #${calls - rounds.length + ri + 1}`, 14, narrow ? y - 2 : y + 14, { size: 10.5, font: FONT.mono, color: C.ink3 });
+        let x = narrow ? 14 : 150;
+        const yb = narrow ? y + 8 : y;
         ctx.font = `700 12px ${FONT.body}`;
         r.draft.forEach((d, i) => {
           const w = ctx.measureText(d.w).width + 16;
           const col = d.ok ? C.good : d.rej ? C.bad : C.line2;
-          PV.box(ctx, x, y + 2, w, 24, { r: 6, fill: PV.alpha(col, d.ok ? 0.25 : 0.12), stroke: col });
-          PV.text(ctx, d.w, x + w / 2, y + 14, { size: 12, align: "center", weight: 700, color: d.ok ? C.ink : C.ink3 });
-          if (d.rej) { ctx.strokeStyle = C.bad; ctx.beginPath(); ctx.moveTo(x + 4, y + 14); ctx.lineTo(x + w - 4, y + 14); ctx.stroke(); }
+          if (x + w > W - 44) return; // no room left on this row
+          PV.box(ctx, x, yb + 2, w, 24, { r: 6, fill: PV.alpha(col, d.ok ? 0.25 : 0.12), stroke: col });
+          PV.text(ctx, d.w, x + w / 2, yb + 14, { size: 12, align: "center", weight: 700, color: d.ok ? C.ink : C.ink3 });
+          if (d.rej) { ctx.strokeStyle = C.bad; ctx.beginPath(); ctx.moveTo(x + 4, yb + 14); ctx.lineTo(x + w - 4, yb + 14); ctx.stroke(); }
           x += w + 5;
         });
-        PV.text(ctx, `+${r.gained}`, W - 18, y + 14, { size: 13, weight: 700, align: "right", color: api.color });
+        PV.text(ctx, `+${r.gained}`, W - 14, yb + 14, { size: 13, weight: 700, align: "right", color: api.color });
       });
       const exp = alpha === 1 ? k + 1 : (1 - Math.pow(alpha, k + 1)) / (1 - alpha);
       const by = H - 118;
-      PV.text(ctx, `Tokens per big-model call so far: ${(produced / Math.max(1, calls)).toFixed(2)}   ·   expected: ${exp.toFixed(2)}   ·   normal decoding: 1.00`, 14, by, { size: 12, color: C.ink });
+      if (W < 520) {
+        PV.text(ctx, `Tokens per big-model call so far: ${(produced / Math.max(1, calls)).toFixed(2)}`, 14, by - 34, { size: 12, color: C.ink });
+        PV.text(ctx, `expected ${exp.toFixed(2)} · normal decoding 1.00`, 14, by - 14, { size: 12, color: C.ink2 });
+      } else PV.text(ctx, `Tokens per big-model call so far: ${(produced / Math.max(1, calls)).toFixed(2)}   ·   expected: ${exp.toFixed(2)}   ·   normal decoding: 1.00`, 14, by, { size: 12, color: C.ink });
       PV.box(ctx, 14, by + 12, W - 28, 10, { r: 3, fill: C.panel });
       PV.box(ctx, 14, by + 12, ((W - 28) * exp) / (k + 1), 10, { r: 3, fill: api.color });
       cap.set(`<b>Grey→green:</b> draft guesses the big model agreed with. <b style="color:${C.bad}">Red:</b> first disagreement; everything after it is thrown away and the big model's own token is used.`);
     });
+    st.phoneHeight(580);
     const ctl = PV.controls(root);
     ctl.slider("Draft agreement α", { min: 0.3, max: 0.95, step: 0.05, value: alpha, fmt: (v) => Math.round(v * 100) + "%", onInput: (v) => (alpha = v) });
     ctl.slider("Draft length k", { min: 1, max: 8, value: k, onInput: (v) => (k = v) });

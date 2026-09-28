@@ -45,28 +45,33 @@
       const step = Math.min(stream.length, Math.floor(t0 / 0.8));
       if (t0 > 0.8 * (stream.length + 5)) t0 = 0;
       const S = run(step);
-      const top = 84, bot = 110;
-      const cs = Math.min((W * 0.42) / d, (H - top - bot) / d);
+      // wide: memory matrix left, recall bars right. phones: matrix on top, bars underneath
+      const narrow = W < 520;
+      const top = narrow ? 30 : 84, bot = 110;
+      const cs = narrow ? Math.min((W - 40) / d, 15) : Math.min((W * 0.42) / d, (H - top - bot) / d);
       let mx = 0.01; S.forEach((row) => row.forEach((v) => (mx = Math.max(mx, Math.abs(v)))));
+      const mx0 = narrow ? (W - d * cs) / 2 : 20;
       for (let i = 0; i < d; i++) for (let j = 0; j < d; j++) {
         const v = S[i][j] / mx;
         ctx.fillStyle = v >= 0 ? PV.alpha(api.color, Math.abs(v)) : PV.alpha(C.reason, Math.abs(v));
-        ctx.fillRect(20 + j * cs, top + i * cs, cs - 1, cs - 1);
+        ctx.fillRect(mx0 + j * cs, top + i * cs, cs - 1, cs - 1);
       }
-      PV.text(ctx, "memory matrix S (fixed size)", 20, top - 12, { size: 11, font: FONT.mono, color: C.ink3 });
-      PV.text(ctx, step < stream.length ? `next: ${stream[step].label}` : "done", 20, top + d * cs + 18, { size: 12, weight: 700, color: C.glow });
+      PV.text(ctx, "memory matrix S (fixed size)", narrow ? 14 : 20, top - 12, { size: 11, font: FONT.mono, color: C.ink3 });
+      PV.text(ctx, step < stream.length ? `next: ${stream[step].label}` : "done", narrow ? 14 : 20, top + d * cs + 18, { size: 12, weight: 700, color: C.glow });
       // recall bars
-      const bx = 40 + d * cs, bw = W - bx - 24;
-      PV.text(ctx, "can it recall each fact's CURRENT value?", bx, top - 12, { size: 11, font: FONT.mono, color: C.ink3 });
-      const rowH = (H - top - bot) / F;
+      const bx = narrow ? 14 : 40 + d * cs, bw = narrow ? W - 28 : W - bx - 24;
+      const btop = narrow ? top + d * cs + 58 : top;
+      PV.text(ctx, narrow ? "can it recall each fact's current value?" : "can it recall each fact's CURRENT value?", bx, btop - 12, { size: 11, font: FONT.mono, color: C.ink3 });
+      const rowH = narrow ? 26 : (H - top - bot) / F;
+      const labW = narrow ? 118 : 110;
       for (let f = 0; f < F; f++) {
-        const y = top + f * rowH;
-        const written = stream.slice(0, step).some((s) => s.k === f);
+        const y = btop + f * rowH;
+        const written = stream.slice(0, step).some((st2) => st2.k === f);
         const c = written ? recall(S, f) : 0;
         const good = c > 0.9;
         PV.text(ctx, `fact ${f + 1}${newVals[f] ? " (updated)" : ""}`, bx, y + rowH / 2, { size: 11.5, color: written ? C.ink : C.ink3 });
-        const x0 = bx + 110, len = Math.max(0, c) * (bw - 160);
-        PV.box(ctx, x0, y + rowH * 0.25, bw - 160, rowH * 0.5, { r: 3, fill: C.panel });
+        const x0 = bx + labW, trackW = bw - labW - 44, len = Math.max(0, c) * trackW;
+        PV.box(ctx, x0, y + rowH * 0.25, trackW, rowH * 0.5, { r: 3, fill: C.panel });
         if (written) PV.box(ctx, x0, y + rowH * 0.25, len, rowH * 0.5, { r: 3, fill: good ? C.good : c > 0.7 ? C.arch : C.bad });
         if (written) PV.text(ctx, c.toFixed(2), x0 + len + 6, y + rowH / 2, { size: 11, font: FONT.mono });
       }
@@ -77,6 +82,7 @@
       }[rule];
       cap.set(msg + " (1.00 = perfect recall)");
     });
+    st.phoneHeight(540);
     const ctl = PV.controls(root);
     ctl.toggle([["linear", "Linear attention"], ["delta", "Delta rule"], ["gated", "Gated delta"]], rule, (v) => { rule = v; t0 = 0; });
     ctl.button("↻ Replay", () => (t0 = 0));

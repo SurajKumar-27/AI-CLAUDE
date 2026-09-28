@@ -14,7 +14,7 @@
     ];
     let doc = ["# Spreadsheet skill", "Read the task and edit the workbook."];
     let hist = [41.8], rejected = [], si = 0, timer = 0;
-    const wrap = h("div", { class: "dom-viz", style: { gridTemplateColumns: "minmax(0,1.2fr) minmax(0,1fr)", gridAutoFlow: "row" } });
+    const wrap = h("div", { class: "dom-viz skill-grid" });
     const docEl = h("div", { style: { fontFamily: FONT.mono, fontSize: "0.8rem", background: C.panel, border: `1px solid ${C.line2}`, borderRadius: "10px", padding: "10px 12px", display: "grid", gap: "4px", alignContent: "start", minHeight: "180px" } });
     const chart = svg("svg", { viewBox: "0 0 300 160", style: "width:100%;height:auto" });
     const status = h("div", { style: { fontSize: "0.85rem", color: C.ink2 } });

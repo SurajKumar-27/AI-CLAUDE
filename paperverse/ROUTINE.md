@@ -46,6 +46,7 @@ Create `paperverse/js/papers/<id>.js` (short lowercase id, e.g. `dreamrsi`). Cop
   4. results as `bars` or `lines` charts built from the paper's tables,
   5. why it matters, what it connects to in the collection, and honest limitations.
 - At least one custom visualisation made with `PV.defineViz("<id>-<name>", …)` that the reader can play with (toggle, slider, step button). Prefix names with the deck id so they never collide. Use the helpers in `js/core.js` (`PV.canvasLoop`, `PV.controls`, `PV.caption`, `PV.note`, `PV.fit`, `PV.box`, `PV.text`), and return a cleanup function.
+- Design every custom visualisation for a phone too (about 360–390px wide), since the owner reads on a phone. Inside a canvas visualisation, treat `W < 520` as a phone: stack side-by-side parts vertically, put legends under charts, and call `st.phoneHeight(px)` on the object `PV.canvasLoop` returns if the stacked layout needs more than the default 400px. `PV.text` shrinks and then truncates text that would run off the canvas, so an ellipsis in a screenshot means the layout needs more room. The generic `bars`, `lines`, `flow` and `chat` visualisations already adapt.
 - Write for someone with zero background. Use short, plain sentences, define every term the first time it appears, and add each new term to `terms`.
 - Charts start at zero, keep one unit per chart, and quote values exactly.
 
@@ -62,7 +63,7 @@ NODE_PATH=$(npm root -g) node paperverse/tools/check.js <id>      # screenshots 
 
 Errors in your new deck must be fixed. If the check reports an error on a deck you didn't touch, re-run it once; if it repeats, fix it when the cause is clear, otherwise record the exact message (the check names the deck and slide) in the log and your report.
 
-Look at the new deck's screenshots at both widths. Fix overlapping text, clipped labels, empty charts and anything hidden behind the controls, then run the check again.
+Look at the new deck's screenshots at both sizes (`-1440.png` desktop, `-390.png` phone). Fix overlapping text, clipped labels, empty charts and anything hidden behind the controls, then run the check again.
 
 ## 6. Ship
 

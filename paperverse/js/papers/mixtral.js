@@ -26,42 +26,51 @@
       phase += dt / 1.6;
       if (phase >= 1) { phase = 0; ti++; route(); }
       const tok = toks[ti % toks.length];
-      const tx = 70, ty = H * 0.45;
-      const rx = W * 0.3;
-      const ex = W * 0.62, eh = Math.min(34, (H - 170) / E - 6);
-      const ey = (i) => 60 + i * (eh + 6);
-      const ox = W - 70;
+      // phones get narrower boxes so token, router, experts and output don't collide
+      const narrow = W < 520;
+      const tw = narrow ? 52 : 80, rw = narrow ? 60 : 80, exw = narrow ? 104 : 140, ow = narrow ? 34 : 80;
+      const top0 = narrow ? 20 : 60;
+      const eh = Math.min(34, (H - top0 - 120) / E - 6);
+      const ey = (i) => top0 + i * (eh + 6);
+      const ty = top0 + (E * (eh + 6)) / 2 - 3;
+      const tx = tw / 2 + 6;
+      const rx = narrow ? tx + tw / 2 + 14 + rw / 2 : W * 0.3;
+      const ex = narrow ? W - ow - 24 - exw / 2 : W * 0.62;
+      const ox = W - ow / 2 - 6;
       // token
-      PV.box(ctx, tx - 40, ty - 18, 80, 36, { r: 8, fill: PV.alpha(C.glow, 0.2), stroke: C.glow });
+      PV.box(ctx, tx - tw / 2, ty - 18, tw, 36, { r: 8, fill: PV.alpha(C.glow, 0.2), stroke: C.glow });
       PV.text(ctx, tok, tx, ty, { size: 14, weight: 700, align: "center" });
       // router
-      PV.box(ctx, rx - 40, ty - 26, 80, 52, { r: 10, fill: C.panel2, stroke: api.color });
+      PV.box(ctx, rx - rw / 2, ty - 26, rw, 52, { r: 10, fill: C.panel2, stroke: api.color });
       PV.text(ctx, "router", rx, ty - 8, { size: 12, weight: 700, align: "center" });
       PV.text(ctx, `top-${k}`, rx, ty + 10, { size: 11, font: FONT.mono, align: "center", color: api.color });
-      PV.arrow(ctx, tx + 40, ty, rx - 42, ty, { color: C.ink3 });
+      PV.arrow(ctx, tx + tw / 2, ty, rx - rw / 2 - 2, ty, { color: C.ink3 });
       for (let i = 0; i < E; i++) {
         const y = ey(i) + eh / 2;
         const on = chosen.includes(i);
         ctx.strokeStyle = on ? api.color : PV.alpha(C.line2, 0.6);
         ctx.lineWidth = on ? 2.5 : 1;
-        ctx.beginPath(); ctx.moveTo(rx + 40, ty); ctx.bezierCurveTo(rx + 100, ty, ex - 110, y, ex - 70, y); ctx.stroke();
+        const el = ex - exw / 2, er = ex + exw / 2, gap = el - (rx + rw / 2);
+        ctx.beginPath(); ctx.moveTo(rx + rw / 2, ty); ctx.bezierCurveTo(rx + rw / 2 + gap * 0.5, ty, el - gap * 0.5, y, el, y); ctx.stroke();
         if (on) {
           const u = Math.min(1, phase * 1.6);
-          const px = PV.lerp(rx + 40, ex - 70, u), py = PV.lerp(ty, y, PV.ease(u));
+          const px = PV.lerp(rx + rw / 2, el, u), py = PV.lerp(ty, y, PV.ease(u));
           ctx.fillStyle = C.glow; ctx.beginPath(); ctx.arc(px, py, 4, 0, 7); ctx.fill();
-          ctx.strokeStyle = PV.alpha(api.color, 0.8); ctx.beginPath(); ctx.moveTo(ex + 70, y); ctx.bezierCurveTo(ex + 110, y, ox - 60, ty, ox - 40, ty); ctx.stroke();
+          const g2 = ox - ow / 2 - er;
+          ctx.strokeStyle = PV.alpha(api.color, 0.8); ctx.beginPath(); ctx.moveTo(er, y); ctx.bezierCurveTo(er + g2 * 0.5, y, ox - ow / 2 - g2 * 0.5, ty, ox - ow / 2, ty); ctx.stroke();
         }
-        PV.box(ctx, ex - 70, ey(i), 140, eh, { r: 7, fill: on ? PV.alpha(api.color, 0.35) : C.panel, stroke: on ? api.color : C.line2 });
-        PV.text(ctx, `expert ${i + 1}`, ex - 60, y, { size: 11.5, weight: on ? 700 : 400, color: on ? C.ink : C.ink3 });
+        PV.box(ctx, el, ey(i), exw, eh, { r: 7, fill: on ? PV.alpha(api.color, 0.35) : C.panel, stroke: on ? api.color : C.line2 });
+        PV.text(ctx, narrow ? `E${i + 1}` : `expert ${i + 1}`, el + 8, y, { size: 11.5, weight: on ? 700 : 400, color: on ? C.ink : C.ink3 });
         // router probability bar
-        PV.box(ctx, ex + 8, y - 4, 54 * scores[i] * 2.2, 8, { r: 2, fill: on ? C.glow : C.line2 });
+        const barX = el + (narrow ? 34 : 78);
+        PV.box(ctx, barX, y - 4, (er - barX - 6) * Math.min(1, scores[i] * 2.2), 8, { r: 2, fill: on ? C.glow : C.line2 });
       }
-      PV.box(ctx, ox - 40, ty - 18, 80, 36, { r: 8, fill: C.panel2, stroke: C.line2 });
-      PV.text(ctx, "Σ weighted", ox, ty, { size: 11.5, align: "center" });
+      PV.box(ctx, ox - ow / 2, ty - 18, ow, 36, { r: 8, fill: C.panel2, stroke: C.line2 });
+      PV.text(ctx, narrow ? "Σ" : "Σ weighted", ox, ty, { size: narrow ? 15 : 11.5, align: "center" });
       // stats
       const total = shared + E * per, active = shared + k * per;
-      const by = H - 108;
-      PV.text(ctx, `active per token: ${active.toFixed(1)}B of ${total.toFixed(1)}B parameters (${Math.round((active / total) * 100)}%)`, 20, by, { size: 12.5, weight: 700 });
+      const by = H - (narrow ? 70 : 108);
+      PV.text(ctx, narrow ? `active: ${active.toFixed(1)}B of ${total.toFixed(1)}B params (${Math.round((active / total) * 100)}%)` : `active per token: ${active.toFixed(1)}B of ${total.toFixed(1)}B parameters (${Math.round((active / total) * 100)}%)`, 20, by, { size: 12.5, weight: 700 });
       const maxL = Math.max(1, ...load);
       load.forEach((l, i) => {
         const bw = (W - 40) / E;
@@ -70,6 +79,7 @@
       PV.text(ctx, "how often each expert has been picked", 20, by + 46, { size: 10.5, color: C.ink3, font: FONT.mono });
       cap.set(`Token <b>“${tok}”</b> → experts <b style="color:${api.color}">${chosen.map((c) => c + 1).join(" & ")}</b>. Only those run; the rest sit idle for this token.`);
     });
+    st.phoneHeight(470);
     const ctl = PV.controls(root);
     ctl.slider("Experts per token (top-k)", { min: 1, max: 4, value: k, onInput: (v) => (k = v) });
     PV.note(root, "illustrative routing");

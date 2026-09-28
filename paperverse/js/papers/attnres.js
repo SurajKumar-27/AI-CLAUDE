@@ -13,9 +13,11 @@
     };
     const cap = PV.caption(root, "");
     const st = PV.canvasLoop(root, (ctx, W, H, t) => {
-      const top = 78, bot = 110;
+      // wide: layer stack left, weights chart right. phones: stack on top, chart underneath
+      const narrow = W < 520;
+      const top = narrow ? 20 : 78, bot = narrow ? H - 280 : 110;
       const lh = (H - top - bot) / L;
-      const sx = 30, sw = Math.min(140, W * 0.2);
+      const sx = narrow ? 14 : 30, sw = narrow ? 84 : Math.min(140, W * 0.2);
       // layer stack
       for (let i = 0; i < L; i++) {
         const y = H - bot - (i + 1) * lh;
@@ -35,12 +37,13 @@
         ctx.beginPath(); ctx.moveTo(tx, y); ctx.bezierCurveTo(tx + 60 + (target - i) * 6, y, tx + 60 + (target - i) * 6, ty, tx + 4, ty); ctx.stroke();
       }
       // bar chart of weights
-      const bx = tx + 130, bw = W - bx - 24;
+      const bx = narrow ? 14 : tx + 130, bw = narrow ? W - 28 : W - bx - 24;
+      const barTop = narrow ? H - bot + 36 : top + 8;
       if (bw > 120) {
-        PV.text(ctx, `what layer ${target} receives from each earlier layer`, bx, top - 10, { size: 11, font: FONT.mono, color: C.ink3 });
-        const rowH = Math.min(22, (H - top - bot) / target);
+        PV.text(ctx, `what layer ${target} receives from each earlier layer`, bx, barTop - 18, { size: 11, font: FONT.mono, color: C.ink3 });
+        const rowH = Math.min(22, ((narrow ? H - barTop - 10 : H - top - bot)) / target);
         for (let i = 0; i < target; i++) {
-          const y = top + 8 + i * rowH;
+          const y = barTop + i * rowH;
           PV.text(ctx, i === 0 ? "emb" : `L${i}`, bx, y + rowH / 2, { size: 11, font: FONT.mono, color: C.ink3 });
           const val = mode === "attn" ? w[i] : 1;
           const len = mode === "attn" ? (bw - 90) * val / maxW : (bw - 90) * 0.35;
@@ -52,6 +55,7 @@
         ? `<b>Attention Residuals:</b> layer ${target} uses a learned query to pick <i>which</i> earlier layers it listens to. Weights sum to 100%, so nothing grows without bound.`
         : `<b>Standard residuals:</b> layer ${target} gets the plain sum of every earlier output, each with weight 1. The pile grows with depth, and each layer's voice gets diluted.`);
     });
+    st.phoneHeight(560);
     const ctl = PV.controls(root);
     ctl.toggle([["attn", "Attention Residuals"], ["sum", "Standard residual"]], mode, (v) => (mode = v));
     ctl.slider("Target layer", { min: 2, max: L - 1, value: target, onInput: (v) => (target = v) });

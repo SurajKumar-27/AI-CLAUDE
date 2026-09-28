@@ -23,7 +23,9 @@
     const st = PV.canvasLoop(root, (ctx, W, H, t, dt) => {
       t0 += dt;
       const q = queries[qi];
-      const mapW = W * 0.56, mapH = H - 130, ox = 14, oy = 50;
+      const narrow = W < 520, ox = 14, oy = narrow ? 44 : 50;
+      // phones: map on top, passages underneath; wider screens: side by side
+      const mapW = narrow ? W - 28 : W * 0.56, mapH = narrow ? Math.min(170, (H - oy - 100) * 0.4) : H - 130;
       const X = (x) => ox + x * mapW, Y = (y) => oy + y * mapH;
       PV.box(ctx, ox, oy, mapW, mapH, { r: 10, stroke: C.line });
       PV.text(ctx, "document index (embedding space)", ox + 8, oy + 12, { size: 10.5, font: FONT.mono, color: C.ink3 });
@@ -46,10 +48,11 @@
       ctx.beginPath(); ctx.arc(X(q.x), Y(q.y), 7, 0, 7); ctx.fill();
       PV.text(ctx, "your question", X(q.x) + 10, Y(q.y) - 12, { size: 11, color: api.color, weight: 700 });
       // right: retrieved passages + generated answer
-      const rx = ox + mapW + 16, rw = W - rx - 14;
-      PV.text(ctx, "retrieved passages → added to the prompt", rx, oy + 6, { size: 10.5, font: FONT.mono, color: C.ink3 });
+      const rx = narrow ? ox : ox + mapW + 16, rw = narrow ? W - 28 : W - rx - 14;
+      const ry = narrow ? oy + mapH + 16 : oy;
+      PV.text(ctx, "retrieved passages → added to the prompt", rx, ry + 6, { size: 10.5, font: FONT.mono, color: C.ink3 });
       ctx.font = `400 12px ${FONT.body}`;
-      let y = oy + 24;
+      let y = ry + 20;
       ranked.slice(0, k).forEach((r, n) => {
         const appear = PV.clamp((t0 - 1.4 - n * 0.4) / 0.4, 0, 1);
         if (appear <= 0) return;
@@ -112,7 +115,7 @@
         h: `<p>RAG splits the job in two:</p>
             <ol><li>A <b>retriever</b> turns your question into a vector (an embedding) and finds the passages whose vectors are closest, out of <b>21 million Wikipedia passages</b> in the paper.</li>
             <li>A <b>generator</b> (a seq2seq model, BART) reads the question plus those passages and writes the answer.</li></ol>
-            <p>Pick a question on the right and watch the search, the retrieved passages, and the grounded answer with citations.</p>`,
+            <p>Pick a question and watch the search, the retrieved passages, and the grounded answer with citations.</p>`,
         v: { type: "ragsearch" },
       },
       {

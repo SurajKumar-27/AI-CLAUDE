@@ -16,24 +16,33 @@
         steps++;
         if (steps % 4 === 0) hist.push(lossOf());
       }
-      const L = 26, top = 70, bw = Math.min(110, W * 0.16);
-      const mid = top + (H - top - 170) / 2;
-      const scale = (H - top - 170) / 2 / 30;
-      // two bars: log-ratio vs reference for chosen and rejected
-      const bars = [["chosen answer", mw, C.good], ["rejected answer", ml, C.bad]];
+      // wide: bars left, loss chart right. phones: bars on top, loss chart underneath
+      const narrow = W < 520;
+      const L = 26, top = narrow ? 40 : 70;
+      const barsH = narrow ? 230 : H - top - 170;
+      const bw = narrow ? Math.min(90, (W - 140) / 2) : Math.min(110, W * 0.16);
+      const gapX = narrow ? 40 : 50;
+      const bx0 = narrow ? (W - (2 * bw + gapX)) / 2 : L + 40;
+      const mid = top + barsH / 2;
+      const scale = barsH / 2 / 30;
+      const labelY = top + barsH + 18;
+      const bars = [[narrow ? "chosen" : "chosen answer", mw, C.good], [narrow ? "rejected" : "rejected answer", ml, C.bad]];
       bars.forEach(([name, v, c], i) => {
-        const x = L + 40 + i * (bw + 50);
+        const x = bx0 + i * (bw + gapX);
         ctx.strokeStyle = C.line2; ctx.beginPath(); ctx.moveTo(x - 10, mid); ctx.lineTo(x + bw + 10, mid); ctx.stroke();
         const hgt = PV.clamp(v, -30, 30) * scale;
         PV.box(ctx, x, v >= 0 ? mid - hgt : mid, bw, Math.abs(hgt) + 1, { r: 4, fill: PV.alpha(c, 0.7) });
-        PV.text(ctx, name, x + bw / 2, H - 120, { size: 12, align: "center", color: C.ink2, weight: 700 });
+        PV.text(ctx, name, x + bw / 2, labelY, { size: 12, align: "center", color: C.ink2, weight: 700 });
         PV.text(ctx, (v >= 0 ? "+" : "") + v.toFixed(1), x + bw / 2, v >= 0 ? mid - hgt - 12 : mid - hgt + 14, { size: 11.5, font: FONT.mono, align: "center" });
       });
-      PV.text(ctx, "log π(answer) − log π_ref(answer)", L + 40, top - 18, { size: 11, font: FONT.mono, color: C.ink3 });
-      PV.text(ctx, "bars start at 0 = the starting model", L + 40, H - 100, { size: 10.5, color: C.ink3 });
+      PV.text(ctx, "log π(answer) − log π_ref(answer)", narrow ? 14 : L + 40, top - 18, { size: 11, font: FONT.mono, color: C.ink3 });
+      PV.text(ctx, "bars start at 0 = the starting model", narrow ? 14 : L + 40, labelY + 20, { size: 10.5, color: C.ink3 });
       // loss curve
-      const lx = L + 40 + 2 * (bw + 50) + 10, lw = W - lx - 20, ly = top + 10, lh = H - top - 190;
-      if (lw > 80) {
+      const lx = narrow ? 14 : L + 40 + 2 * (bw + 50) + 10;
+      const ly = narrow ? labelY + 42 : top + 10;
+      const lw = narrow ? W - 28 : W - lx - 20;
+      const lh = narrow ? H - ly - 20 : H - top - 190;
+      if (lw > 80 && lh > 60) {
         PV.box(ctx, lx, ly, lw, lh, { r: 8, stroke: C.line });
         PV.text(ctx, "DPO loss over training", lx + 8, ly + 14, { size: 11, font: FONT.mono, color: C.ink3 });
         ctx.strokeStyle = api.color; ctx.lineWidth = 2; ctx.beginPath();
@@ -43,6 +52,7 @@
       const gap = beta * (mw - ml);
       cap.set(`Step <b>${steps}</b> · implicit reward gap β·Δ = <b>${gap.toFixed(2)}</b> · P(model prefers chosen) = <b style="color:${C.good}">${(sig(gap) * 100).toFixed(0)}%</b> · loss ${lossOf().toFixed(3)}`);
     });
+    st.phoneHeight(520);
     const ctl = PV.controls(root);
     ctl.slider("β", { min: 0.02, max: 0.5, step: 0.01, value: beta, fmt: (v) => v.toFixed(2), onInput: (v) => (beta = v) });
     ctl.button("↻ Restart", () => { mw = 0; ml = 0; steps = 0; hist = []; running = true; });

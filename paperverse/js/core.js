@@ -81,6 +81,7 @@
   // or while the tab is hidden. draw(ctx, W, H, t, dt) is called every frame.
   PV.canvasLoop = function (root, draw, opts = {}) {
     const cv = PV.h("canvas");
+    cv.style.touchAction = "pan-y"; // vertical swipes still scroll the slide on phones
     root.appendChild(cv);
     const ctx = cv.getContext("2d");
     const state = { W: 0, H: 0, dpr: 1, running: true, t: 0 };
@@ -97,7 +98,8 @@
     ro.observe(cv);
     let last = performance.now(), raf = 0;
     function frame(now) {
-      const dt = Math.min(0.05, (now - last) / 1000);
+      // the first frame's timestamp can predate `last`, so never let time run backwards
+      const dt = PV.clamp((now - last) / 1000, 0, 0.05);
       last = now;
       if (!document.hidden) state.t += PV.reduceMotion && !opts.forceMotion ? dt * 0.35 : dt;
       ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
@@ -115,19 +117,39 @@
       state.pointer.y = e.clientY - r.top;
     };
     cv.addEventListener("pointermove", (e) => { pos(e); state.pointer.inside = true; });
-    cv.addEventListener("pointerleave", () => { state.pointer.inside = false; });
-    cv.addEventListener("pointerdown", (e) => { pos(e); state.pointer.down = true; opts.onDown && opts.onDown(state.pointer.x, state.pointer.y, e); });
+    cv.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") state.pointer.inside = false; });
+    // a tap counts as hovering, so hover-driven visualisations also work on touch screens
+    cv.addEventListener("pointerdown", (e) => { pos(e); state.pointer.down = true; state.pointer.inside = true; opts.onDown && opts.onDown(state.pointer.x, state.pointer.y, e); });
     window.addEventListener("pointerup", () => (state.pointer.down = false));
     state.canvas = cv;
     state.ctx = ctx;
+    // lets a visualisation that stacks its parts on phones ask for a taller canvas there
+    state.phoneHeight = (px) => { if (root.clientWidth < 520) cv.style.height = px + "px"; };
     state.redraw = () => frame(performance.now());
     state.stop = () => { state.running = false; cancelAnimationFrame(raf); ro.disconnect(); };
     return state;
   };
 
   /* ---------- text helpers for canvas ---------- */
+  // draws text; unless o.noFit, it shrinks (to 9px) and then truncates so it never runs off the canvas
   PV.text = function (ctx, str, x, y, o = {}) {
-    ctx.font = `${o.weight || 400} ${o.size || 13}px ${o.font || PV.FONT.body}`;
+    let size = o.size || 13;
+    const font = (s) => `${o.weight || 400} ${s}px ${o.font || PV.FONT.body}`;
+    ctx.font = font(size);
+    str = String(str);
+    if (!o.noFit) {
+      const cw = ctx.canvas.clientWidth || 1e5;
+      const align = o.align || "left";
+      const avail = align === "right" ? x - 4 : align === "center" ? 2 * Math.min(x, cw - x) - 4 : cw - x - 4;
+      let w = ctx.measureText(str).width;
+      if (avail > 12 && w > avail) {
+        while (size > 9 && w > avail) { size -= 0.5; ctx.font = font(size); w = ctx.measureText(str).width; }
+        if (w > avail) {
+          while (str.length > 1 && ctx.measureText(str + "…").width > avail) str = str.slice(0, -1);
+          str += "…";
+        }
+      }
+    }
     ctx.fillStyle = o.color || PV.C.ink;
     ctx.textAlign = o.align || "left";
     ctx.textBaseline = o.base || "middle";

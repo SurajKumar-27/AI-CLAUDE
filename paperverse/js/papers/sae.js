@@ -17,6 +17,33 @@
       let seed = 0; for (const ch of inp.text) seed = (seed * 33 + ch.charCodeAt(0)) % 10007;
       const r = PV.rng(seed);
       const nN = 28, top = 76, bot = 110;
+      if (W < 520) {
+        // phones: neurons as a strip on top, the autoencoder in the middle, features listed underneath
+        const sy = 36, sh = 70, bwid = (W - 28) / nN;
+        PV.text(ctx, "neurons (dense, mixed meaning)", 14, sy - 14, { size: 11, font: FONT.mono, color: C.ink3 });
+        for (let i = 0; i < nN; i++) {
+          const v = 0.25 + r() * 0.6 + 0.08 * Math.sin(t * 2 + i);
+          const hue = [C.train, C.reason, C.speed, C.arch, C.inside][i % 5];
+          PV.box(ctx, 14 + i * bwid + 1, sy + sh * (1 - v), bwid - 2, sh * v, { r: 2, fill: PV.alpha(hue, 0.45) });
+        }
+        const by = sy + sh + 16;
+        PV.arrow(ctx, W / 2, sy + sh + 2, W / 2, by - 2, { color: C.ink3 });
+        PV.box(ctx, W / 2 - 80, by, 160, 36, { r: 10, fill: C.panel2, stroke: api.color });
+        PV.text(ctx, "sparse autoencoder", W / 2, by + 18, { size: 12, weight: 700, align: "center" });
+        PV.arrow(ctx, W / 2, by + 38, W / 2, by + 56, { color: api.color });
+        const fy = by + 74;
+        PV.text(ctx, "features (only a handful fire)", 14, fy - 4, { size: 11, font: FONT.mono, color: C.ink3 });
+        inp.feats.forEach(([name, v], i) => {
+          const y = fy + 18 + i * 42;
+          const pulse = v * (0.92 + 0.08 * Math.sin(t * 3 + i));
+          PV.text(ctx, name, 14, y, { size: 13, weight: 700, color: i === 0 ? C.glow : C.ink });
+          PV.box(ctx, 14, y + 10, W - 28, 9, { r: 3, fill: C.panel });
+          PV.box(ctx, 14, y + 10, (W - 28) * pulse, 9, { r: 3, fill: i === 0 ? C.glow : api.color });
+        });
+        PV.text(ctx, "…every other feature ≈ 0", 14, fy + 18 + inp.feats.length * 42, { size: 11, color: C.ink3 });
+        cap.set(`<b>Input:</b> “${inp.text}”`);
+        return;
+      }
       // dense neurons
       const lw = W * 0.28;
       PV.text(ctx, "neurons (dense, mixed meaning)", 18, top - 14, { size: 11, font: FONT.mono, color: C.ink3 });
@@ -51,6 +78,7 @@
       PV.text(ctx, "…every other feature ≈ 0", fx, zy + 16, { size: 11, color: C.ink3 });
       cap.set(`<b>Input:</b> “${inp.text}”`);
     });
+    st.phoneHeight(470);
     const ctl = PV.controls(root);
     ctl.toggle(inputs.map((x, i) => [i, x.label]), 0, (v) => (ii = v));
     PV.note(root, "illustrative features");

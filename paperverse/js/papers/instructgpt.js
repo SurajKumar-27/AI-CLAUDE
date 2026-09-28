@@ -15,7 +15,7 @@
     const refN = norm(ref);
     const cap = PV.caption(root, "");
     const st = PV.canvasLoop(root, (ctx, W, H) => {
-      const L = 20, R = 20, T = 60, B = 120;
+      const narrow = W < 520, L = 20, R = 20, T = narrow ? 118 : 60, B = 120;
       const pw = W - L - R, ph = H - T - B;
       const pol = norm(refN.map((p, i) => p * Math.exp(rew[i] / beta)));
       const maxP = Math.max(...pol, ...refN);
@@ -42,7 +42,12 @@
       let kl = 0; pol.forEach((p, i) => { if (p > 1e-12) kl += p * Math.log(p / refN[i]); });
       // legend
       const lg = [[C.reason, "original model (SFT)"], [api.color, "after RL"], [C.arch, "reward model's score (dashed)"]];
-      lg.forEach(([c, s], i) => { ctx.fillStyle = c; ctx.fillRect(L + i * (pw / 3), T - 22, 10, 10); PV.text(ctx, s, L + i * (pw / 3) + 16, T - 17, { size: 11, color: C.ink2 }); });
+      // legend: one row on wide screens, stacked on phones
+      lg.forEach(([c, s], i) => {
+        const lx = narrow ? L : L + i * (pw / 3), ly = narrow ? T - 62 + i * 17 : T - 22;
+        ctx.fillStyle = c; ctx.fillRect(lx, ly, 10, 10);
+        PV.text(ctx, s, lx + 16, ly + 5, { size: 11, color: C.ink2 });
+      });
       cap.set(`KL leash β = <b>${beta.toFixed(2)}</b> · helpful: <b style="color:${C.good}">${(help * 100).toFixed(0)}%</b> · reward-hacking: <b style="color:${C.bad}">${(hack * 100).toFixed(0)}%</b> · drift from original: <b>${kl.toFixed(2)}</b> nats`);
     });
     const ctl = PV.controls(root);

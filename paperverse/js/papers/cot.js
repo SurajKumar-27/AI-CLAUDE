@@ -8,27 +8,33 @@
     const cot = ["23", "−", "20", "=", "3.", "3", "+", "6", "=", "9.", "The", "answer", "is", "9."];
     PV.caption(root, "<b>Every token the model writes costs one full trip through all its layers.</b> Writing the steps out buys more computation and a written-down scratchpad.");
     const st = PV.canvasLoop(root, (ctx, W, H, t) => {
+      // tokens wrap onto extra rows on narrow screens instead of shrinking to unreadable boxes
+      const cw = Math.max(40, Math.min(46, (W - 40) / cot.length));
+      const perRow = Math.max(1, Math.floor((W - 40) / cw));
+      const rowH = 62;
       const lane = (y, toks, label, color, ok) => {
         const n = toks.length;
         const cyc = 9, u = (t % cyc) / cyc;
         const shown = Math.min(n, Math.floor(u * 1.3 * n) + 1);
         PV.text(ctx, label, 20, y - 44, { size: 12, font: FONT.mono, color: C.ink3 });
-        const cw = Math.min(46, (W - 40) / cot.length);
         for (let i = 0; i < shown; i++) {
-          const x = 20 + i * cw;
+          const x = 20 + (i % perRow) * cw, yy = y + Math.floor(i / perRow) * rowH;
           // the stack of layers used to produce this token
           for (let l = 0; l < 5; l++) {
             ctx.fillStyle = PV.alpha(color, 0.18 + l * 0.1);
-            ctx.fillRect(x + 2, y - 34 + l * 5, cw - 4, 4);
+            ctx.fillRect(x + 2, yy - 34 + l * 5, cw - 4, 4);
           }
-          PV.box(ctx, x + 1, y + 4, cw - 2, 24, { r: 5, fill: C.panel, stroke: C.line2 });
-          PV.text(ctx, toks[i], x + cw / 2, y + 16, { size: Math.min(12, cw * 0.3), align: "center", weight: 700 });
+          PV.box(ctx, x + 1, yy + 4, cw - 2, 24, { r: 5, fill: C.panel, stroke: C.line2 });
+          PV.text(ctx, toks[i], x + cw / 2, yy + 16, { size: 12, align: "center", weight: 700 });
         }
-        PV.text(ctx, `${shown} passes through the network`, 20, y + 46, { size: 12, color: C.ink2 });
-        if (shown === n) PV.text(ctx, ok ? "✓ correct" : "✗ wrong", W - 20, y + 46, { size: 13, weight: 700, align: "right", color: ok ? C.good : C.bad });
+        const by = y + (Math.ceil(n / perRow) - 1) * rowH + 46;
+        PV.text(ctx, `${shown} passes through the network`, 20, by, { size: 12, color: C.ink2 });
+        if (shown === n) PV.text(ctx, ok ? "✓ correct" : "✗ wrong", W - 20, by, { size: 13, weight: 700, align: "right", color: ok ? C.good : C.bad });
+        return by;
       };
-      lane(H * 0.34, direct, "Direct answer", C.ink3, false);
-      lane(H * 0.72, cot, "Chain of thought", api.color, true);
+      const top = W < 520 ? 150 : H * 0.3;
+      const end1 = lane(top, direct, "Direct answer", C.ink3, false);
+      lane(Math.max(end1 + 90, W < 520 ? 0 : H * 0.68), cot, "Chain of thought", api.color, true);
     });
     PV.note(root, "illustrative");
     return () => st.stop();

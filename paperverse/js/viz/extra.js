@@ -14,7 +14,7 @@
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     root.appendChild(renderer.domElement);
-    renderer.domElement.style.touchAction = "none";
+    renderer.domElement.style.touchAction = "pan-y";
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(o.fov || 45, 1, 0.1, 500);
     const orbit = { theta: o.theta ?? 0.7, phi: o.phi ?? 1.1, r: o.r ?? 12, target: new THREE.Vector3(...(o.target || [0, 0, 0])), spin: o.spin ?? 0.08 };
@@ -80,10 +80,11 @@
       const dt = Math.min(0.05, clock.getDelta());
       const t = clock.elapsedTime;
       if (!userMoved && !PV.reduceMotion) orbit.theta += dt * orbit.spin;
+      const r = orbit.r * Math.max(1, Math.min(1.5, 1.0 / Math.max(0.3, camera.aspect)));
       camera.position.set(
-        orbit.target.x + orbit.r * Math.sin(orbit.phi) * Math.cos(orbit.theta),
-        orbit.target.y + orbit.r * Math.cos(orbit.phi),
-        orbit.target.z + orbit.r * Math.sin(orbit.phi) * Math.sin(orbit.theta));
+        orbit.target.x + r * Math.sin(orbit.phi) * Math.cos(orbit.theta),
+        orbit.target.y + r * Math.cos(orbit.phi),
+        orbit.target.z + r * Math.sin(orbit.phi) * Math.sin(orbit.theta));
       camera.lookAt(orbit.target);
       update(t, dt);
       renderer.render(scene, camera);
@@ -305,10 +306,13 @@
       });
       words.forEach((w, i) => {
         const a = t * 0.18 + (i / words.length) * Math.PI * 2;
-        const rx = Math.min(W * 0.36, 260), ry = Math.min(H * 0.3, 150);
-        const x = cx + Math.cos(a) * rx, y = cy + Math.sin(a) * ry;
         const depth = (Math.sin(a) + 1) / 2;
-        PV.text(ctx, w, x, y, { size: 13 + depth * 7, weight: 700, color: api.color, align: "center", alpha: 0.45 + depth * 0.55 });
+        const size = (W < 520 ? 12 : 13) + depth * (W < 520 ? 5 : 7);
+        ctx.font = `700 ${size}px ${FONT.body}`;
+        const half = ctx.measureText(w).width / 2;
+        const rx = Math.max(10, Math.min(W * 0.36, 260, W / 2 - half - 10)), ry = Math.min(H * 0.3, 150);
+        const x = cx + Math.cos(a) * rx, y = cy + Math.sin(a) * ry;
+        PV.text(ctx, w, x, y, { size, weight: 700, color: api.color, align: "center", alpha: 0.45 + depth * 0.55 });
       });
       ctx.fillStyle = C.glow;
       ctx.shadowColor = C.glow;

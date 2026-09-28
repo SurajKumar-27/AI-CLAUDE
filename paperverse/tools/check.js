@@ -3,13 +3,15 @@
 //   NODE_PATH=$(npm root -g) node paperverse/tools/check.js            # all decks
 //   NODE_PATH=$(npm root -g) node paperverse/tools/check.js ncp mamba3 # only these, with screenshots
 //
+// Runs twice: a 1440px desktop window and an emulated iPhone 13 (390px wide, touch).
+//
 // Screenshots of the named decks go to paperverse/dist/shots/ (git-ignored).
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
-let chromium;
-try { ({ chromium } = require("playwright-core")); } catch (e) { ({ chromium } = require("playwright")); }
+let chromium, devices;
+try { ({ chromium, devices } = require("playwright-core")); } catch (e) { ({ chromium, devices } = require("playwright")); }
 
 const ROOT = path.resolve(__dirname, "..");
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png" };
@@ -40,8 +42,12 @@ function chromePath() {
   const errors = [];
   let where = "home page";
   const shotDir = path.join(ROOT, "dist", "shots");
-  for (const vp of [{ width: 1440, height: 900 }, { width: 400, height: 820 }]) {
-    const page = await browser.newPage({ viewport: vp });
+  // a desktop window, then an emulated phone (touch, high pixel density, mobile viewport)
+  const setups = [{ viewport: { width: 1440, height: 900 } }, { ...devices["iPhone 13"], deviceScaleFactor: 2 }];
+  for (const setup of setups) {
+    const vp = setup.viewport;
+    const context = await browser.newContext(setup);
+    const page = await context.newPage();
     page.on("pageerror", (e) => errors.push(`[${vp.width}px] ${where}: ${e.stack || e.message}`));
     page.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource|fonts\.g/.test(m.text())) errors.push(`[${vp.width}px] ${where}: console: ${m.text()}`); });
     await page.goto(url, { waitUntil: "load" });
@@ -66,7 +72,7 @@ function chromePath() {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     if (overflow > 1) errors.push(`[${vp.width}px] page scrolls sideways by ${overflow}px`);
     console.log(`${vp.width}px: ${decks.length} decks, ${decks.reduce((a, d) => a + d[1], 0)} slides checked`);
-    await page.close();
+    await context.close();
   }
   await browser.close();
   server.close();

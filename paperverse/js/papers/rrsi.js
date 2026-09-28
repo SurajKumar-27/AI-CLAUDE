@@ -19,7 +19,9 @@
       t0 += dt;
       const upto = Math.min(T, Math.floor(t0 * 2.2));
       if (t0 > T / 2.2 + 3) t0 = 0;
-      const L = 44, R = Math.min(190, W * 0.34), top = 88, bot = 170;
+      // phones: legend moves under the plot so the plot keeps the full width
+      const narrow = W < 520;
+      const L = 44, R = narrow ? 50 : Math.min(190, W * 0.34), top = narrow ? 24 : 88, bot = narrow ? 240 : 170;
       const pw = W - L - R, ph = H - top - bot;
       const X = (i) => L + (i / T) * pw, Y = (v) => top + (1 - (v - 32) / 34) * ph;
       [35, 45, 55, 65].forEach((v) => {
@@ -40,21 +42,22 @@
       if (show !== "rrsi") { line(unregEvolve, C.ink2, true); line(unregHeld, C.bad, false); legend.push([C.ink2, true, "unregularised · evolve set"], [C.bad, false, "unregularised · held-out"]); }
       if (show !== "unreg") { line(rrsiEvolve, api.color, true); line(rrsiHeld, C.good, false); legend.push([api.color, true, "RRSI · evolve set"], [C.good, false, "RRSI · held-out"]); }
       legend.forEach(([c, dash, s], i) => {
-        const lx = L + pw + 10, ly = top + 6 + i * 18;
+        const lx = narrow ? 14 + (i % 2) * ((W - 28) / 2) : L + pw + 10, ly = narrow ? top + ph + 40 + Math.floor(i / 2) * 18 : top + 6 + i * 18;
         ctx.strokeStyle = c; ctx.lineWidth = 2.5; ctx.setLineDash(dash ? [5, 4] : []);
         ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + 16, ly); ctx.stroke(); ctx.setLineDash([]);
         PV.text(ctx, s, lx + 22, ly, { size: 10.5, color: c });
       });
       PV.text(ctx, "evolution round →", L + pw / 2, top + ph + 16, { size: 11, align: "center", color: C.ink3 });
       // edit budget schedule
-      const by = top + ph + 40;
-      PV.text(ctx, "RRSI edit budget per round (cosine-annealed, like L0 sparsity)", L, by, { size: 11, color: C.ink2 });
+      const by = top + ph + (narrow ? 96 : 40);
+      PV.text(ctx, narrow ? "RRSI edit budget per round (cosine-annealed)" : "RRSI edit budget per round (cosine-annealed, like L0 sparsity)", narrow ? 14 : L, by, { size: 11, color: C.ink2 });
       for (let i = 0; i <= T; i++) {
         const b = budget(i), bh = b * 7;
         PV.box(ctx, X(i) - 5, by + 50 - bh, 10, bh, { r: 2, fill: i <= upto ? api.color : C.line2 });
       }
       cap.set("<b>Dashed:</b> score on the tasks the harness evolves against. <b>Solid:</b> score on unseen benchmarks. Unregularised evolution memorises; RRSI keeps changes that transfer.");
     });
+    st.phoneHeight(560);
     const ctl = PV.controls(root);
     ctl.toggle([["both", "Compare"], ["unreg", "Unregularised"], ["rrsi", "RRSI"]], show, (v) => { show = v; t0 = 0; });
     ctl.button("↻ Replay", () => (t0 = 0));
