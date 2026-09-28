@@ -19,14 +19,16 @@ def urls_from_telethon_message(msg) -> list[str]:
 
     text = msg.message or ""
     found = []
-    for ent, inner in (msg.get_entities_text() if msg.entities else []):
+    for ent, inner in msg.get_entities_text():
         if isinstance(ent, MessageEntityTextUrl):
             found.append(ent.url)
         elif isinstance(ent, MessageEntityUrl):
             found.append(inner)
-    for row in msg.buttons or []:
-        for button in row:
-            url = getattr(button, "url", None)
+    # Read the raw markup: msg.buttons is only filled in on fully initialised messages.
+    for row in getattr(msg.reply_markup, "rows", None) or []:
+        for button in row.buttons:
+            # older layers: KeyboardButtonUrl(url=...); newer: KeyboardButton(type=InlineButtonTypeUrl(url=...))
+            url = getattr(button, "url", None) or getattr(getattr(button, "type", None), "url", None)
             if url:
                 found.append(url)
     found += URL_RE.findall(text)
@@ -40,7 +42,11 @@ def fetch_new_posts(api_id: str, api_hash: str, session: str, chat: str, after_i
 
     posts: list[Post] = []
     newest = after_id
-    with TelegramClient(StringSession(session), int(api_id), api_hash) as client:
+    client = TelegramClient(StringSession(session), int(api_id), api_hash, connection_retries=3, timeout=30)
+    client.connect()  # not client.start(): in CI that would block waiting for a phone number
+    try:
+        if not client.is_user_authorized():
+            raise RuntimeError("TELEGRAM_SESSION is not logged in - make a new one (README, user mode)")
         entity = client.get_entity(int(chat) if chat.lstrip("-").isdigit() else chat)
         kwargs = {"min_id": after_id, "limit": limit} if after_id else {"limit": 1}
         for msg in reversed(list(client.iter_messages(entity, **kwargs))):
@@ -48,4 +54,6 @@ def fetch_new_posts(api_id: str, api_hash: str, session: str, chat: str, after_i
             urls = urls_from_telethon_message(msg)
             if urls:
                 posts.append(Post(str(chat), msg.id, msg.message or "", urls))
+    finally:
+        client.disconnect()
     return posts, newest

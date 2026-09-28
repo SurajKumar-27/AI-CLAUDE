@@ -73,11 +73,28 @@ To run it right away: *Actions → jobbot → Run workflow*, optionally with a s
 
 ### 5. User mode (a group or channel where you can't add a bot)
 
-1. Get an API ID and hash at <https://my.telegram.org> → *API development tools*.
-2. Run `scripts/make_telegram_session.py` once, in Google Colab or anywhere with Python. It logs in with your phone number and a login code and prints a session string.
-3. Add the secrets `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` and `TELEGRAM_SESSION`, plus the variable `TELEGRAM_MODE=user`.
+jobbot reads the group as **you** and still sends reports through your bot. You don't have to be an admin.
 
-Reports still come through the bot. The session string is a logged-in session of your account, so keep it secret. You can revoke it in Telegram under *Settings → Devices*.
+1. Go to <https://my.telegram.org>, log in with your phone, open **API development tools**, and create an app (any name). Copy the **api_id** and **api_hash**.
+2. Open <https://colab.research.google.com> → **New notebook**, paste this into the cell, and press ▶:
+
+   ```python
+   !pip -q install telethon
+   from telethon import TelegramClient
+   from telethon.sessions import StringSession
+   client = TelegramClient(StringSession(), int(input("api_id: ")), input("api_hash: "))
+   await client.start()  # asks for your phone number, the login code Telegram sends you, and your 2FA password if set
+   print("\nTELEGRAM_SESSION:\n" + client.session.save() + "\n")
+   async for d in client.iter_dialogs(limit=100):
+       print(d.id, "|", d.name)
+   await client.disconnect()
+   ```
+
+   It prints a long **session string** and a list of your chats with their IDs. Find the job group in that list.
+3. Add these secrets: `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_SESSION` (the long string), and `TELEGRAM_SOURCE_CHAT` (the group's ID from the list).
+4. Add the **variable** `TELEGRAM_MODE` = `user` (the *Variables* tab, next to Secrets).
+
+The session string is a logged-in session of your account, so keep it secret and delete the Colab notebook afterwards. jobbot only reads the one group; it never posts there. You can revoke the session any time in Telegram under *Settings → Devices*.
 
 ## Your data files
 
