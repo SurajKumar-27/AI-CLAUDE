@@ -14,6 +14,8 @@
   ];
 
   let filter = { track: "all", era: "all", q: "" };
+  // decks added by the twice-weekly routine carry `added: "YYYY-MM-DD"`; flag them for two weeks
+  const isNew = (p) => p.added && (Date.now() - Date.parse(p.added)) / 864e5 <= 14;
 
   function card(p) {
     const tr = PV.tracks[p.track];
@@ -24,6 +26,7 @@
       h("h3", null, p.title),
       h("p", null, p.oneLiner),
       h("div", { class: "card-foot" },
+        isNew(p) ? h("span", { class: "badge new" }, "New · added " + p.added) : null,
         p.era === "frontier" ? h("span", { class: "badge new" }, "Frontier") : p.era === "primer" ? h("span", { class: "badge new" }, "Start here") : h("span", { class: "badge" }, "Foundation"),
         h("span", { class: "badge" }, `${total} slides`),
         prog > 0 ? h("span", { class: "badge", style: { color: tr.color, borderColor: tr.color } }, prog >= 1 ? "Done" : `${Math.round(prog * 100)}% seen`) : null,
@@ -39,7 +42,7 @@
       .filter((p) => filter.track === "all" || p.track === filter.track)
       .filter((p) => filter.era === "all" || p.era === filter.era)
       .filter((p) => !q || (p.title + " " + p.oneLiner + " " + (p.short || "") + " " + (p.tags || []).join(" ")).toLowerCase().includes(q))
-      .sort((a, b) => (a.era === "primer" ? -1 : b.era === "primer" ? 1 : (a.date || "").localeCompare(b.date || "")));
+      .sort((a, b) => (a.era === "primer" ? -1 : b.era === "primer" ? 1 : isNew(b) - isNew(a) || (a.date || "").localeCompare(b.date || "")));
     list.forEach((p) => grid.appendChild(card(p)));
     if (!list.length) grid.appendChild(h("p", { style: { color: PV.C.ink3 } }, "No paper matches that search. Try a broader word such as “memory” or “agent”."));
     document.getElementById("count").textContent = `${list.length} of ${PV.papers.length}`;

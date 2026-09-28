@@ -45,6 +45,17 @@ A paper made the list if it passed at least one test: it changed what everyone b
 
 The 2026 papers were read in full from arXiv. Numbers on result slides come from the papers' own tables. Anything that is a sketch of an idea rather than measured data is labelled “illustrative” on the chart itself.
 
+## New papers every Monday and Thursday
+
+A scheduled Claude routine picks up to two of the most important new AI papers, reads them in full, writes a deck for each, checks every slide in a headless browser, pushes, and republishes the site. New decks show a “New” badge for two weeks. The playbook it follows is [ROUTINE.md](ROUTINE.md) and its decisions are recorded in [ROUTINE_LOG.md](ROUTINE_LOG.md).
+
+Tools it uses, which you can also run yourself:
+
+```bash
+python3 paperverse/tools/find_candidates.py                 # recent popular papers without a deck yet
+NODE_PATH=$(npm root -g) node paperverse/tools/check.js     # open every slide at desktop and phone width, fail on errors
+```
+
 ## How it's built
 
 Plain HTML, CSS and JavaScript with classic `<script>` tags, so it also runs from `file://`. Three.js (vendored in `vendor/`) powers the galaxy and the 3D scenes. Everything else is hand-written canvas and SVG.

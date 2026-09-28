@@ -4,7 +4,8 @@
 (function () {
   const { h } = PV;
   const ARM = { arch: 0, train: 1, reason: 2, speed: 3, inside: 4 };
-  const Y0 = 2017, Y1 = 2026.9;
+  const Y0 = 2017;
+  let Y1 = 2026.9; // the rim; pushed outward when newer papers arrive
 
   function yearFrac(p) {
     const [y, m] = (p.date || String(p.year)).split("-").map(Number);
@@ -12,6 +13,10 @@
   }
 
   PV.initGalaxy = function (wrap) {
+    PV.papers.forEach((p) => {
+      const [y, m] = (p.date || String(p.year)).split("-").map(Number);
+      Y1 = Math.max(Y1, y + ((m || 6) - 1) / 12 + 0.15);
+    });
     const THREE = window.THREE;
     let gl = null;
     try {
@@ -36,7 +41,7 @@
       if (k === "primer") return;
       legend.appendChild(h("span", null, h("i", { style: { background: t.color, color: t.color } }), t.name));
     });
-    legend.appendChild(h("span", { style: { color: PV.C.ink3, marginTop: "4px" } }, "centre 2017 → rim 2026"));
+    legend.appendChild(h("span", { style: { color: PV.C.ink3, marginTop: "4px" } }, `centre 2017 → rim ${Math.floor(Y1)}`));
     wrap.appendChild(legend);
 
     /* textures */
@@ -121,7 +126,7 @@
 
     /* year rings */
     const ringR = (fr) => 1.1 + fr * 9.4;
-    [2020, 2023, 2026].forEach((y) => {
+    [2020, 2023, 2026, 2029, 2032].filter((y) => y <= Y1).forEach((y) => {
       const R = ringR((y - Y0) / (Y1 - Y0));
       const pts = [];
       for (let i = 0; i <= 128; i++) pts.push(new THREE.Vector3(Math.cos((i / 128) * Math.PI * 2) * R, 0, Math.sin((i / 128) * Math.PI * 2) * R));
