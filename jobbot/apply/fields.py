@@ -1,13 +1,10 @@
 """Read an application form's fields and decide what goes in each one."""
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass, field
 
-from pydantic import BaseModel
-
-from ..models import JobPosting, Profile
+from ..models import Profile
 
 # Runs in the page. Tags every fillable control with data-jobbot-key and
 # returns a description of it, grouping radio buttons / checkboxes by name.
@@ -16,12 +13,27 @@ COLLECT_JS = r"""
   const visible = el => {
     const s = getComputedStyle(el);
     if (s.display === 'none' || s.visibility === 'hidden') return false;
+    // dummy inputs behind custom dropdowns (react-select's "requiredInput" and friends)
+    if (el.type !== 'file' && (el.getAttribute('aria-hidden') === 'true' || parseFloat(s.opacity) === 0
+        || (el.tabIndex === -1 && s.pointerEvents === 'none'))) return false;
     const r = el.getBoundingClientRect();
     // file inputs are often visually hidden behind a styled button
     return (r.width > 0 && r.height > 0) || el.type === 'file';
   };
   const clean = t => (t || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  const GENERIC = /^(attach|upload|browse|choose file|select file|drop files? here|or|dropbox|google drive|enter manually|paste|accepted file|max(imum)? file|\(?optional)\b/i;
   const labelOf = el => {
+    const t = baseLabel(el);
+    if (el.type !== 'file' || !GENERIC.test(t)) return t;
+    // "Attach" buttons: use the upload widget's heading ("Resume/CV*") instead
+    let c = el.parentElement;
+    for (let i = 0; i < 8 && c; i++, c = c.parentElement) {
+      const first = clean((c.innerText || '').split('\n').find(l => l.trim() && !GENERIC.test(l.trim())) || '');
+      if (first) return first;
+    }
+    return t;
+  };
+  const baseLabel = el => {
     if (el.id) {
       const l = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
       if (l && clean(l.innerText)) return clean(l.innerText);
@@ -117,8 +129,18 @@ class FormField:
         return f"{self.label} {self.name} {self.id} {self.autocomplete}".lower()
 
 
+def _trim_label(f: FormField) -> FormField:
+    """Labels read off a dropdown's container also contain its options; cut them off."""
+    if f.kind == "select":
+        cut = [i for i in (f.label.find(" Select..."), f.label.find(" Select "),
+                           f.label.find(" " + f.options[0]) if f.options else -1) if i > 0]
+        if cut:
+            f.label = f.label[:min(cut)].strip()
+    return f
+
+
 def collect_fields(frame) -> list[FormField]:
-    return [FormField(**f) for f in frame.evaluate(COLLECT_JS)]
+    return [_trim_label(FormField(**f)) for f in frame.evaluate(COLLECT_JS)]
 
 
 # ------------------------------------------------------------------ standard fields
@@ -130,7 +152,8 @@ class Plan:
     text: dict[str, str] = field(default_factory=dict)  # key -> text / option label
     choices: dict[str, list[str]] = field(default_factory=dict)  # radio / checkbox option labels
     files: dict[str, str] = field(default_factory=dict)  # key -> file path
-    unanswered: list[FormField] = field(default_factory=list)  # required fields nobody could answer
+    unanswered: list[FormField] = field(default_factory=list)  # required fields with no answer
+    skipped: list[FormField] = field(default_factory=list)  # optional fields left empty
     notes: dict[str, str] = field(default_factory=dict)  # key -> field label, for the report
 
 
@@ -161,11 +184,20 @@ def standard_value(key: str, profile: Profile) -> str:
     }.get(key, "")
 
 
-def plan_standard(fields: list[FormField], profile: Profile, resume_pdf: str, cover_pdf: str | None) -> tuple[Plan, list[FormField]]:
+def plan_standard(fields: list[FormField], profile: Profile, resume_pdf: str, cover_pdf: str | None,
+                  book: AnswerBook | None = None) -> tuple[Plan, list[FormField]]:
+    """Fill the fields every form has (name, email, resume ...) from the profile.
+
+    Returns the plan and the fields still to answer. An explicit answer in the
+    answer book always wins over the profile default.
+    """
     plan, rest = Plan(), []
     file_fields = [f for f in fields if f.kind == "file"]
     for f in fields:
         hay = f.haystack
+        if f.kind != "file" and book is not None and book.lookup(f) is not None:
+            rest.append(f)
+            continue
         if f.kind == "file":
             if re.search(r"cover", hay):
                 if cover_pdf:
@@ -185,79 +217,64 @@ def plan_standard(fields: list[FormField], profile: Profile, resume_pdf: str, co
                 continue
             if f.kind != "textarea" and len(f.label) < 80:
                 matched = next((k for k, pat in STANDARD if re.search(pat, hay)), None)
-                if matched and standard_value(matched, profile):
-                    plan.text[f.key] = standard_value(matched, profile)
+                value = standard_value(matched, profile) if matched else ""
+                if matched == "portfolio" and "other" in hay and not profile.personal.portfolio:
+                    value = profile.personal.leetcode or value  # don't repeat GitHub in "Other website"
+                if value:
+                    plan.text[f.key] = value
                     plan.notes[f.key] = f.label
                     continue
         rest.append(f)
     return plan, rest
 
 
-# ------------------------------------------------------------------ LLM answers
+# ------------------------------------------------------------------ answers written for this job
 
-class FieldAnswer(BaseModel):
-    key: str
-    answer: str | None  # text, or the exact option label for select/radio; None if unknown
-    options: list[str]  # for checkbox groups: every option label to tick
-    confident: bool
+def _key(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(text).lower()).strip()
 
 
-class FormAnswers(BaseModel):
-    answers: list[FieldAnswer]
+TRUTHY = {"yes", "true", "checked", "check", "tick", "agree", "i agree", "y", "1"}
 
 
-ANSWER_SYSTEM = """You fill in a job application form for the candidate, using ONLY facts from their profile and resume.
+class AnswerBook:
+    """Answers for one application, from answers.json.
 
-Rules:
-- Never invent facts. If the profile/resume doesn't contain the answer, return answer null (the candidate will fill it in). A null "facts" value in the profile means unknown.
-- For select/radio fields, answer with one of the listed option labels, copied exactly. For checkbox groups, list every option to tick in "options".
-- Yes/no questions about skills or experience: "Yes" only when the resume clearly shows it; otherwise answer honestly ("No") when not required to be positive, or null if unsure.
-- Years of experience with a technology: count only professional experience shown on the resume; the candidate's total professional experience is in the profile.
-- Demographic / EEO / disability / veteran questions: use the profile's eeo_default_answer, or the closest "decline / prefer not to say" option.
-- Consent / privacy-policy / "I confirm the information is accurate" checkboxes: tick them.
-- Free-text questions ("Why do you want to work here?", "Tell us about a project"): 2-4 sentences in first person, specific to this job, grounded only in the resume.
-- Never answer questions about salary, notice period, visa, relocation, or dates unless the profile gives the answer.
-Set confident false for any answer you had to judge rather than copy."""
+    Keys are the question text (or any distinctive part of it) or a field key from
+    fields.json; values are text, an option label, a list of option labels for
+    checkbox groups, or true/false for single checkboxes.
+    """
 
+    def __init__(self, answers: dict | None = None):
+        self.items = [(_key(k), v) for k, v in (answers or {}).items() if _key(k)]
 
-def ask_llm(llm, fields: list[FormField], profile: Profile, resume_text: str, posting: JobPosting) -> FormAnswers:
-    listing = [{"key": f.key, "type": f.kind, "question": f.label, "required": f.required,
-                **({"options": f.options} if f.options else {})} for f in fields]
-    profile_json = json.dumps({"personal": profile.personal.model_dump(), "facts": profile.facts}, indent=1, default=str)
-    user = (
-        f"<profile>\n{profile_json}\n</profile>\n\n<resume>\n{resume_text}\n</resume>\n\n"
-        f"<job>\nTitle: {posting.title}\nCompany: {posting.company}\n\n{posting.description[:6000]}\n</job>\n\n"
-        f"<form_fields>\n{json.dumps(listing, indent=1)}\n</form_fields>"
-    )
-    return llm.structured(system=ANSWER_SYSTEM, user=user, schema=FormAnswers, max_tokens=16000)
+    def lookup(self, f: FormField):
+        label, exact = _key(f.label), {_key(f.label), _key(f.key)} | ({_key(f.name)} if f.name else set())
+        for k, v in self.items:
+            if k in exact:
+                return v
+        hits = [(len(k), v) for k, v in self.items if len(k) >= 4 and k in label]
+        return max(hits, key=lambda h: h[0])[1] if hits else None
 
 
-def merge_llm_answers(plan: Plan, fields: list[FormField], answers: FormAnswers) -> None:
-    by_key = {a.key: a for a in answers.answers}
+def apply_answers(plan: Plan, fields: list[FormField], book: AnswerBook) -> None:
     for f in fields:
-        a = by_key.get(f.key)
+        v = book.lookup(f)
         plan.notes[f.key] = f.label
-        if f.kind == "checkboxes":
-            picks = [o for o in (a.options if a else []) if o in f.options] or (
-                [a.answer] if a and a.answer in f.options else [])
-            if picks:
-                plan.choices[f.key] = picks
-            elif f.required:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            if f.required:
                 plan.unanswered.append(f)
+            else:
+                plan.skipped.append(f)
             continue
         if f.kind == "checkbox":
-            yes = bool(a and ((a.answer or "").strip().lower() in {"yes", "true", "checked", "tick", "agree", "i agree"}
-                              or a.options))
-            if yes:
+            if v is True or str(v).strip().lower() in TRUTHY:
                 plan.choices[f.key] = ["yes"]
             elif f.required:
                 plan.unanswered.append(f)
-            continue
-        if a is None or a.answer is None or not str(a.answer).strip():
-            if f.required:
-                plan.unanswered.append(f)
-            continue
-        if f.kind in ("radio",):
-            plan.choices[f.key] = [a.answer]
+        elif f.kind == "checkboxes":
+            plan.choices[f.key] = [str(x) for x in v] if isinstance(v, list) else [str(v)]
+        elif f.kind == "radio":
+            plan.choices[f.key] = [str(v[0] if isinstance(v, list) else v)]
         else:
-            plan.text[f.key] = str(a.answer)
+            plan.text[f.key] = str(v[0] if isinstance(v, list) else v)

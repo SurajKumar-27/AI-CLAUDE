@@ -124,21 +124,13 @@ class Profile(BaseModel):
 
 # ---------------------------------------------------------------- jobs
 
-class Category(str, Enum):
-    FULLSTACK = "fullstack"
-    AI = "ai"
-    OTHER = "other"
-
-
 class JobStatus(str, Enum):
-    NEW = "new"
-    SKIPPED = "skipped"
-    AWAITING_APPROVAL = "awaiting_approval"  # form filled, waiting for your OK
+    READY = "ready"  # form filled, not submitted (dry run)
+    NEEDS_ANSWERS = "needs_answers"  # required questions the answer file doesn't cover
     NEEDS_HUMAN = "needs_human"  # something only you can do (login, captcha ...)
     SUBMITTED = "submitted"
     UNCERTAIN = "uncertain"  # clicked submit but saw no confirmation
     FAILED = "failed"
-    MANUAL = "manual"  # you said you'd handle it
 
 
 class JobPosting(BaseModel):
@@ -147,22 +139,3 @@ class JobPosting(BaseModel):
     company: str = ""
     location: str = ""
     description: str = ""
-
-
-class JobRecord(BaseModel):
-    id: str
-    source_url: str
-    job_url: str
-    resolve_chain: list[str] = Field(default_factory=list)
-    title: str = ""
-    company: str = ""
-    category: Category | None = None
-    fit_score: int | None = None
-    fit_notes: str = ""
-    status: JobStatus = JobStatus.NEW
-    status_detail: str = ""
-    resume_pdf: str = ""
-    screenshot: str = ""
-    answers: dict[str, Any] = Field(default_factory=dict)
-    created_at: str = ""
-    updated_at: str = ""

@@ -1,11 +1,9 @@
-"""Get the job description off the job page and decide which resume fits it."""
+"""Get the job description off the job page."""
 from __future__ import annotations
 
 import re
-from typing import Literal
 
 from bs4 import BeautifulSoup
-from pydantic import BaseModel
 
 from .links import Page, _job_posting_ld
 from .models import JobPosting
@@ -40,42 +38,16 @@ def extract_posting(page: Page) -> JobPosting:
         posting.description = _text(str(ld.get("description") or ""))
     if len(posting.description) < 300:
         posting.description = _text(page.html)
-    if not posting.title and soup.title:
-        posting.title = soup.title.get_text(strip=True)
+    if not posting.title:
+        og = soup.find("meta", property="og:title")
+        posting.title = (og.get("content") if og else "") or (soup.title.get_text(strip=True) if soup.title else "")
+    # Greenhouse-style page titles: "Job Application for <role> at <company>"
+    for cand in (posting.title, soup.title.get_text(strip=True) if soup.title else ""):
+        m = re.match(r"^(?:job application for\s+)?(.+?)\s+at\s+(.+?)$", cand, re.I)
+        if m and not posting.company:
+            posting.title, posting.company = m.group(1).strip(), m.group(2).strip()
+    if not posting.company:
+        site = soup.find("meta", property="og:site_name")
+        posting.company = site.get("content", "").strip() if site else ""
     posting.description = posting.description[:MAX_JD_CHARS]
     return posting
-
-
-class JobAnalysis(BaseModel):
-    is_job_posting: bool
-    title: str
-    company: str
-    location: str
-    category: Literal["fullstack", "ai", "other"]
-    category_reason: str
-    key_requirements: list[str]
-    years_required: str
-    fit_score: int  # 0-100
-    fit_notes: str
-
-
-CLASSIFY_SYSTEM = """You screen job postings for one candidate and route each to one of three resumes.
-
-Categories:
-- "fullstack": full-stack, backend or frontend web development where the main stack is JavaScript/TypeScript, Node.js, React, Python web frameworks (FastAPI/Django/Flask), REST APIs and microservices.
-- "ai": roles centred on AI/ML/LLM work: GenAI, RAG, agents, LLM integration, NLP, ML engineering, data science, prompt engineering.
-- "other": everything else, e.g. Java/Spring Boot backend, .NET, Go, mobile, DevOps/SRE, data engineering, QA/SDET, embedded, or generic SDE roles with no clear stack.
-
-When a role mixes categories, choose the one the posting emphasises most (title first, then the required skills).
-fit_score is how well the candidate's resume matches the posting's hard requirements (skills and years of experience), 0-100. Be honest; low scores are useful.
-If the page is not a job posting (an expired listing, a login wall, a generic careers homepage, an article), set is_job_posting false."""
-
-
-def analyze(llm, posting: JobPosting, resume_text: str) -> JobAnalysis:
-    user = (
-        f"<candidate_resume>\n{resume_text}\n</candidate_resume>\n\n"
-        f"<job_page url=\"{posting.url}\">\nTitle (from page): {posting.title}\n"
-        f"Company (from page): {posting.company}\nLocation (from page): {posting.location}\n\n"
-        f"{posting.description}\n</job_page>"
-    )
-    return llm.structured(system=CLASSIFY_SYSTEM, user=user, schema=JobAnalysis, max_tokens=16000)

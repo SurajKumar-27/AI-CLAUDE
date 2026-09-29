@@ -1,0 +1,23 @@
+<!doctype html><html><body>
+<form action="/thanks.html" method="get">
+  <label for="fn">First Name *</label><input id="fn" name="fn" required>
+  <label for="email">Email *</label><input id="email" name="email" type="email" required>
+  <div><label id="city-l" for="city">Location (City) *</label>
+    <input id="city" name="city" role="combobox" aria-controls="city-list" aria-labelledby="city-l" autocomplete="off" required>
+    <ul id="city-list" role="listbox"></ul></div>
+  <button type="submit">Submit Application</button>
+</form>
+<script>
+  const cities = ["Hyderabad, Telangana, India", "Hyderabad, Sindh, Pakistan", "Bengaluru, Karnataka, India"];
+  const input = document.getElementById('city'), list = document.getElementById('city-list');
+  input.addEventListener('input', () => {
+    list.innerHTML = '';
+    setTimeout(() => {  // suggestions arrive late, like a real places API
+      for (const c of cities.filter(c => input.value && c.toLowerCase().startsWith(input.value.toLowerCase()))) {
+        const li = document.createElement('li'); li.setAttribute('role', 'option'); li.textContent = c;
+        li.onclick = () => { input.value = c; list.innerHTML = ''; };
+        list.appendChild(li);
+      }
+    }, 700);
+  });
+</script></body></html>

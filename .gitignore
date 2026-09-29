@@ -3,9 +3,9 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
-# Personal data and run output never go into this (public) repo
+# Personal data and per-job output never go into this (public) repo.
+# data/ is committed only encrypted, as data.enc (scripts/data.sh).
 data/
-state/
-output/
+work/
 *.session
 .env

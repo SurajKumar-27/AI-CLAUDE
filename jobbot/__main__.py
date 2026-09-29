@@ -1,179 +1,272 @@
-"""Command line entry point: `python -m jobbot <command>`."""
+"""`python -m jobbot <command>`: the steps of applying to one job.
+
+  job <url>             resolve the link, save the job description and the form's questions
+  plan <id> --base B    write an editable plan.json from base resume B (fullstack | ai)
+  resume <id>           apply plan.json (with the truthfulness checks) and render the PDF
+  apply <id> [--submit] fill the form with the PDF + answers.json; submit only with --submit
+  log                   applications submitted so far
+  resolve <url>         only show where a link leads
+  render <base>         render a base resume (layout check)
+"""
 from __future__ import annotations
 
 import argparse
+import datetime as dt
+import hashlib
+import json
 import logging
+import os
+import re
+import subprocess
 import sys
-import time
-from contextlib import ExitStack
+from pathlib import Path
 
-from .config import Settings, load_profile, load_resumes
+from .config import RESUME_NAMES, Settings, load_profile, load_resumes
 
 log = logging.getLogger("jobbot")
 
 
-def _build(settings: Settings, stack: ExitStack, telegram: bool = True):
+def _slug(text: str, n: int = 24) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:n].strip("-") or "job"
+
+
+def _job_dir(settings: Settings, job_id: str) -> Path:
+    d = settings.work_dir / job_id
+    if not d.exists():
+        sys.exit(f"No job '{job_id}' in {settings.work_dir}/ - run `python -m jobbot job <url>` first.")
+    return d
+
+
+def _read_json(path: Path, default=None):
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else default
+
+
+def _write_json(path: Path, data) -> None:
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _resume_filename(settings: Settings) -> str:
+    return load_profile(settings).personal.full_name.replace(" ", "_") + "_Resume.pdf"
+
+
+# ------------------------------------------------------------------ commands
+
+def cmd_job(settings: Settings, url: str, job_id: str | None) -> None:
+    from .apply.filler import ApplicationFiller
+    from .browser import BrowserSession, RenderFetcher
+    from .jobpage import extract_posting
+    from .links import HttpFetcher, LinkResolver, canonical_url, extract_candidates
+
+    with BrowserSession(settings.headless, settings.chromium_path) as session:
+        renderer = RenderFetcher(session, settle_ms=2500)
+        res = LinkResolver(HttpFetcher(), renderer).resolve(url)
+        page = renderer.get(res.url)
+        posting = extract_posting(page)
+        job_url = page.url or res.url
+        job_id = job_id or f"{dt.date.today():%Y%m%d}-{_slug(posting.company or posting.title)}-" \
+                           f"{hashlib.sha1(canonical_url(job_url).encode()).hexdigest()[:6]}"
+        d = settings.work_dir / job_id
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "jd.txt").write_text(posting.description, encoding="utf-8")
+        candidates = [] if res.confident else [
+            {"url": c.url, "text": c.text, "score": c.score} for c in extract_candidates(page)[:10]]
+        _write_json(d / "job.json", {
+            "id": job_id, "source_url": url, "job_url": job_url, "resolve_chain": res.chain,
+            "resolve_method": res.method, "confident": res.confident, "title": posting.title,
+            "company": posting.company, "location": posting.location, "other_candidates": candidates,
+        })
+        form, fields = ApplicationFiller(session, load_profile(settings), d).inspect(job_url)
+        _write_json(d / "fields.json", {"status": form.status.value, "detail": form.detail,
+                                        "form_url": form.final_url, "fields": fields})
+
+    print(f"id:        {job_id}")
+    print(f"job:       {posting.title} | {posting.company} | {posting.location}")
+    print(f"url:       {job_url}   (via {res.method}{'' if res.confident else ', NOT confident'})")
+    if len(res.chain) > 1:
+        print("chain:     " + "  ->  ".join(res.chain))
+    for c in candidates:
+        print(f"  other link [{c['score']}]: {c['url']}  ({c['text'][:60]})")
+    print(f"jd:        {d / 'jd.txt'} ({len(posting.description)} chars)")
+    print(f"form:      {form.status.value} - {form.detail}  {form.final_url}")
+    for f in fields:
+        opts = f" options={f['options']}" if f.get("options") else ""
+        print(f"  [{f['key']}] {'*' if f['required'] else ' '} ({f['type']}) {f['question'][:110]}{opts[:300]}")
+    if form.screenshot:
+        print(f"screenshot: {form.screenshot}")
+
+
+def cmd_plan(settings: Settings, job_id: str, base_name: str) -> None:
+    from .tailor import PlanBullet, PlanSkillGroup, TailorPlan, allowed_extra_skills, resume_payload
+
+    d = _job_dir(settings, job_id)
+    resumes, profile = load_resumes(settings), load_profile(settings)
+    base = resumes[base_name]
+    payload = resume_payload(base)
+    bullets = [PlanBullet(id=b["id"], text=b["text"]) for e in payload["experience"] for r in e["roles"]
+               for b in r["bullets"]]
+    bullets += [PlanBullet(id=b["id"], text=b["text"]) for p in payload["projects"] for b in p["bullets"]]
+    plan = TailorPlan(base=base_name, summary=base.summary,
+                      skills=[PlanSkillGroup(**g.model_dump()) for g in base.skills], bullets=bullets,
+                      changes=[], missing_requirements=[], cover_letter="")
+    _write_json(d / "plan.json", plan.model_dump())
+    others = [r for n, r in resumes.items() if n != base_name]
+    print(f"wrote {d / 'plan.json'} (unchanged copy of the {base_name} resume - edit it)")
+    print("bullet ids: " + ", ".join(
+        f"{b['id']}={e['company'][:12]}/{r['title'][:18]}" for e in payload["experience"] for r in e["roles"]
+        for b in r["bullets"][:1]) + " ... projects p<N>b<M>")
+    print("skills that may be added: " + ", ".join(allowed_extra_skills(base, others, profile.extra_skills)))
+
+
+def cmd_resume(settings: Settings, job_id: str) -> None:
+    from .browser import BrowserSession
+    from .render import pdf_page_count, render_resume_pdf, text_to_pdf
+    from .tailor import TailorPlan, apply_plan
+
+    d = _job_dir(settings, job_id)
+    plan = TailorPlan.model_validate(_read_json(d / "plan.json") or sys.exit("no plan.json - run `plan` first"))
+    resumes, profile = load_resumes(settings), load_profile(settings)
+    base = resumes[plan.base]
+    others = [r for n, r in resumes.items() if n != plan.base]
+    result = apply_plan(base, plan, other_resumes=others, extra_skills=profile.extra_skills)
+    pdf = d / _resume_filename(settings)
+    with BrowserSession(settings.headless, settings.chromium_path) as session:
+        render_resume_pdf(session, result.resume, profile, pdf)
+        if result.cover_letter:
+            text_to_pdf(session, result.cover_letter, profile, d / "Cover_Letter.pdf")
+            (d / "cover_letter.txt").write_text(result.cover_letter, encoding="utf-8")
+        elif plan.cover_letter.strip():
+            print("! cover letter dropped: it mentions a number/technology that isn't on the resume")
+    (d / "resume.txt").write_text(result.resume.as_text(), encoding="utf-8")
+    _write_json(d / "resume_report.json", {"base": plan.base, "changes": result.changes, "reverted": result.reverted,
+                                           "missing_requirements": result.missing_requirements})
+    print(f"resume:   {pdf}  ({pdf_page_count(pdf)} page)")
+    print(f"text:     {d / 'resume.txt'}")
+    for r in result.reverted:
+        print(f"  reverted: {r}")
+    if not result.reverted:
+        print("  all edits passed the checks")
+
+
+def cmd_apply(settings: Settings, job_id: str, submit: bool) -> None:
+    from .apply.filler import ApplicationFiller
+    from .browser import BrowserSession
+    from .models import JobStatus
+
+    d = _job_dir(settings, job_id)
+    job = _read_json(d / "job.json")
+    pdf = d / _resume_filename(settings)
+    if not pdf.exists():
+        sys.exit("no tailored resume yet - run `resume` first")
+    answers = _read_json(d / "answers.json", {})
+    cover = d / "Cover_Letter.pdf"
+    fields_info = _read_json(d / "fields.json", {})
+    target = fields_info.get("form_url") or job["job_url"]
+    with BrowserSession(settings.headless, settings.chromium_path) as session:
+        result = ApplicationFiller(session, load_profile(settings), d).run(
+            target, str(pdf), str(cover) if cover.exists() else None, answers, submit)
+    out = {"status": result.status.value, "detail": result.detail, "final_url": result.final_url,
+           "screenshot": result.screenshot, "entered": result.answers, "unanswered": result.unanswered,
+           "optional_left_empty": result.skipped, "problems": result.problems,
+           "at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")}
+    _write_json(d / ("result_submit.json" if submit else "result_dry_run.json"), out)
+    print(f"status:  {result.status.value} - {result.detail}")
+    print(f"page:    {result.final_url}")
+    print(f"screenshot: {result.screenshot}")
+    for q, a in result.answers.items():
+        print(f"  = {q[:90]}: {str(a)[:100]}")
+    for f in result.unanswered:
+        opts = f" options={f['options']}" if f.get("options") else ""
+        print(f"  ? REQUIRED [{f['key']}] ({f['type']}) {f['question'][:120]}{opts[:300]}")
+    for f in result.skipped:
+        print(f"  - optional, left empty [{f['key']}] {f['question'][:100]}")
+    for p in result.problems:
+        print(f"  ! {p}")
+    if submit and result.status in (JobStatus.SUBMITTED, JobStatus.UNCERTAIN):
+        _log_application(settings, job, result.status.value, d)
+
+
+def _log_application(settings: Settings, job: dict, status: str, d: Path) -> None:
+    report = _read_json(d / "resume_report.json", {})
+    entry = {"at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), "status": status,
+             "company": job.get("company"), "title": job.get("title"), "url": job.get("job_url"),
+             "resume": report.get("base"), "id": job.get("id")}
+    path = settings.data_dir / "applications.jsonl"
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    print(f"logged in {path}")
+    if os.environ.get("JOBBOT_STATE_KEY") and Path("scripts/data.sh").exists():
+        subprocess.run(["scripts/data.sh", "encrypt"], check=False)
+        print("data.enc updated - commit it to keep the log")
+
+
+def cmd_log(settings: Settings) -> None:
+    path = settings.data_dir / "applications.jsonl"
+    if not path.exists():
+        print("No applications yet.")
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        e = json.loads(line)
+        print(f"{e['at'][:10]}  {e['status']:<10} {e.get('company') or '?':<24} {e.get('title') or '?':<40} {e.get('url')}")
+
+
+def cmd_resolve(settings: Settings, url: str) -> None:
     from .browser import BrowserSession, RenderFetcher
     from .links import HttpFetcher, LinkResolver
-    from .llm import ClaudeLLM
-    from .notify import ConsoleNotifier, TelegramNotifier
-    from .pipeline import Pipeline
-    from .state import State
-    from .telegram_bot import TelegramBot
 
-    profile = load_profile(settings)
-    resumes = load_resumes(settings)
-    llm = ClaudeLLM(settings.model, settings.effort, settings.use_fallbacks)
-    session = stack.enter_context(BrowserSession(settings.headless, settings.chromium_path))
-    state = State(settings.state_dir)
-    bot = None
-    if telegram and settings.bot_token:
-        bot = TelegramBot(settings.bot_token)
-        notifier = TelegramNotifier(bot, settings.notify_chat_id, profile.personal.full_name)
-    else:
-        notifier = ConsoleNotifier()
-    resolver = LinkResolver(HttpFetcher(), RenderFetcher(session), llm)
-    return Pipeline(settings, llm, session, profile, resumes, state, notifier, resolver), bot, state
+    with BrowserSession(settings.headless, settings.chromium_path) as session:
+        res = LinkResolver(HttpFetcher(), RenderFetcher(session)).resolve(url)
+    print(f"{res.url}\n  method: {res.method}  confident: {res.confident}")
+    for hop in res.chain:
+        print(f"  -> {hop}")
 
 
-def run_once(settings: Settings, long_poll: int = 0) -> int:
-    """Read new Telegram posts and button taps, process them, remember where we stopped."""
-    from .telegram_bot import Batch
+def cmd_render(settings: Settings, name: str) -> None:
+    from .browser import BrowserSession
+    from .render import render_resume_pdf
 
-    if not settings.bot_token or not settings.notify_chat_id:
-        sys.exit("Set TELEGRAM_BOT_TOKEN and TELEGRAM_NOTIFY_CHAT_ID first (see README).")
-    with ExitStack() as stack:
-        pipeline, bot, state = _build(settings, stack)
-        offset = state.meta.get("bot_offset")
-        updates = bot.get_updates(offset, timeout=long_poll)
-        batch: Batch = bot.parse(updates, settings.source_chat if settings.telegram_mode == "bot" else "",
-                                 settings.notify_chat_id)
-
-        for cb in batch.callbacks:
-            bot.answer_callback(cb.id, "Working on it…")
-            bot.clear_buttons(cb.chat_id, cb.message_id)
-            try:
-                msg = pipeline.handle_action(cb.action, cb.job_id)
-            except Exception as e:  # noqa: BLE001
-                log.exception("action %s failed", cb.action)
-                msg = f"That didn't work: {e.__class__.__name__}"
-            pipeline.notifier.text(msg)
-
-        posts = list(batch.posts)
-        if settings.telegram_mode == "user":
-            from .telegram_user import fetch_new_posts
-
-            user_posts, newest = fetch_new_posts(settings.api_id, settings.api_hash, settings.user_session,
-                                                 settings.source_chat, int(state.meta.get("user_last_id") or 0))
-            posts += user_posts
-            state.meta["user_last_id"] = newest
-
-        handled = 0
-        processed_until = batch.last_update_id
-        for i, post in enumerate(posts):
-            if handled >= settings.max_jobs_per_run:
-                # Leave the rest for the next run.
-                if i < len(batch.post_update_ids):
-                    processed_until = batch.post_update_ids[i] - 1
-                if settings.telegram_mode == "user" and i >= len(batch.posts):
-                    state.meta["user_last_id"] = posts[i].message_id - 1
-                break
-            records = pipeline.handle_urls(post.urls, force=post.from_owner)
-            handled += len(records)
-            if post.from_owner and not records:
-                pipeline.notifier.text("No new job found in that link (or I've already handled it).")
-
-        if processed_until is not None:
-            bot.ack(processed_until)
-            state.meta["bot_offset"] = processed_until + 1
-        state.prune_files()
-        state.save()
-        log.info("run finished: %d post(s), %d job(s), %d button tap(s)", len(posts), handled, len(batch.callbacks))
-        return handled
+    out = settings.work_dir / f"base-{name}.pdf"
+    with BrowserSession(settings.headless, settings.chromium_path) as session:
+        render_resume_pdf(session, load_resumes(settings)[name], load_profile(settings), out)
+    print(out)
 
 
 def main(argv=None) -> None:
-    ap = argparse.ArgumentParser(prog="jobbot", description="Telegram job posts -> tailored resume -> application")
+    ap = argparse.ArgumentParser(prog="jobbot", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("run-once", help="process new Telegram posts once (for cron / GitHub Actions)")
-    d = sub.add_parser("daemon", help="keep running and react to posts within seconds")
-    d.add_argument("--poll", type=int, default=50, help="Telegram long-poll seconds")
-    a = sub.add_parser("apply", help="process one job link now (no Telegram needed)")
-    a.add_argument("url")
-    a.add_argument("--submit", action="store_true", help="actually press submit")
-    a.add_argument("--telegram", action="store_true", help="send the report to Telegram instead of printing it")
-    r = sub.add_parser("resolve", help="show where a link really leads")
-    r.add_argument("url")
-    rr = sub.add_parser("render", help="render a base resume to PDF (check the layout)")
-    rr.add_argument("name", choices=["fullstack", "ai"])
-    rr.add_argument("--out", default="")
-    sub.add_parser("telegram-check", help="verify the bot token and list chats the bot has seen")
+    j = sub.add_parser("job")
+    j.add_argument("url")
+    j.add_argument("--id")
+    p = sub.add_parser("plan")
+    p.add_argument("id")
+    p.add_argument("--base", choices=RESUME_NAMES, required=True)
+    r = sub.add_parser("resume")
+    r.add_argument("id")
+    a = sub.add_parser("apply")
+    a.add_argument("id")
+    a.add_argument("--submit", action="store_true", help="actually press submit (default: fill only)")
+    sub.add_parser("log")
+    rs = sub.add_parser("resolve")
+    rs.add_argument("url")
+    rn = sub.add_parser("render")
+    rn.add_argument("name", choices=RESUME_NAMES)
     args = ap.parse_args(argv)
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    logging.getLogger("httpx").setLevel(logging.WARNING)  # its request log would print the bot token
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
     settings = Settings()
-
-    if args.cmd == "run-once":
-        run_once(settings)
-    elif args.cmd == "daemon":
-        while True:
-            try:
-                run_once(settings, long_poll=args.poll)
-            except KeyboardInterrupt:
-                raise
-            except Exception:  # noqa: BLE001
-                log.exception("run failed; retrying in 30s")
-                time.sleep(30)
+    if args.cmd == "job":
+        cmd_job(settings, args.url, args.id)
+    elif args.cmd == "plan":
+        cmd_plan(settings, args.id, args.base)
+    elif args.cmd == "resume":
+        cmd_resume(settings, args.id)
     elif args.cmd == "apply":
-        settings.auto_submit = args.submit
-        with ExitStack() as stack:
-            pipeline, _, _ = _build(settings, stack, telegram=args.telegram)
-            recs = pipeline.handle_urls([args.url], force=True)
-            if not recs:
-                print("Nothing processed.")
+        cmd_apply(settings, args.id, args.submit)
+    elif args.cmd == "log":
+        cmd_log(settings)
     elif args.cmd == "resolve":
-        from .browser import BrowserSession, RenderFetcher
-        from .links import HttpFetcher, LinkResolver
-
-        with BrowserSession(settings.headless, settings.chromium_path) as session:
-            llm = None
-            try:
-                from .llm import ClaudeLLM
-
-                llm = ClaudeLLM(settings.model, settings.effort, settings.use_fallbacks)
-            except Exception:  # noqa: BLE001
-                pass
-            res = LinkResolver(HttpFetcher(), RenderFetcher(session), llm).resolve(args.url)
-            print(f"{res.url}\n  method: {res.method}  confident: {res.confident}")
-            for hop in res.chain:
-                print(f"  -> {hop}")
+        cmd_resolve(settings, args.url)
     elif args.cmd == "render":
-        from pathlib import Path
-
-        from .browser import BrowserSession
-        from .render import render_resume_pdf
-
-        out = Path(args.out or f"output/{args.name}.pdf")
-        with BrowserSession(settings.headless, settings.chromium_path) as session:
-            render_resume_pdf(session, load_resumes(settings)[args.name], load_profile(settings), out)
-        print(out)
-    elif args.cmd == "telegram-check":
-        from .telegram_bot import TelegramBot
-
-        bot = TelegramBot(settings.bot_token)
-        me = bot.get_me()
-        print(f"Bot OK: @{me.get('username')}")
-        chats = {}
-        for up in bot.get_updates(None):
-            msg = up.get("message") or up.get("channel_post") or (up.get("callback_query") or {}).get("message") or {}
-            chat = msg.get("chat")
-            if chat:
-                chats[chat["id"]] = f"{chat.get('type')}: {chat.get('title') or chat.get('username') or chat.get('first_name')}"
-        if not chats:
-            print("No chats seen yet. Send /start to the bot and post something in the group, then run again.")
-        for cid, name in chats.items():
-            print(f"  chat id {cid}  ({name})")
+        cmd_render(settings, args.name)
 
 
 if __name__ == "__main__":

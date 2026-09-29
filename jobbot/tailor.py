@@ -1,7 +1,7 @@
-"""Make small, truthful edits to a base resume so it lines up with one job description.
+"""Make truthful edits to a base resume so it lines up with one job description.
 
-Claude proposes the edits; the code below then enforces the rules, so a bad
-suggestion is reverted instead of reaching an application:
+The edit plan (plan.json) is written per job; the code below enforces the rules,
+so a bad edit is reverted instead of reaching an application:
   * every bullet stays attached to the same role; bullets may be reordered or reworded
   * a reworded bullet may not introduce a number or a technology that isn't
     already in that bullet or in another bullet about the same company
@@ -11,13 +11,12 @@ suggestion is reverted instead of reaching an application:
 """
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel
 
-from .models import JobPosting, Resume, SkillGroup
+from .models import Resume, SkillGroup
 
 COMMON_TECH = [
     "Java", "Spring", "Spring Boot", "Hibernate", "JPA", "Kafka", "RabbitMQ", "Kotlin", "Scala", "Golang", "Rust",
@@ -91,7 +90,7 @@ class TechVocabulary:
         return found
 
 
-# ------------------------------------------------------------------ LLM plan
+# ------------------------------------------------------------------ edit plan
 
 class PlanSkillGroup(BaseModel):
     label: str
@@ -104,31 +103,13 @@ class PlanBullet(BaseModel):
 
 
 class TailorPlan(BaseModel):
+    base: str = "fullstack"  # which base resume the plan edits: fullstack | ai
     summary: str
     skills: list[PlanSkillGroup]
     bullets: list[PlanBullet]  # every bullet id, in the new order within each role
     changes: list[str]  # short human-readable list of what was changed and why
     missing_requirements: list[str]  # JD requirements the candidate does not show
     cover_letter: str
-
-
-TAILOR_SYSTEM = """You tailor a candidate's resume to a specific job description with MINOR, TRUTHFUL edits.
-
-Allowed:
-- Rewrite the summary (2-3 sentences, similar length) to foreground the experience most relevant to this job.
-- Reorder skill groups and the items inside them so the job's key skills come first; drop irrelevant items; rename a group label if it helps.
-- Add a skill ONLY if it appears in <allowed_extra_skills>.
-- Reorder bullets within the same role, and reword a bullet to use the job's terminology for the SAME work, keeping it about the same length.
-
-Forbidden:
-- Inventing or inflating anything: no new technologies, tools, numbers, metrics, responsibilities, titles, dates or employers.
-- Changing any number in a bullet.
-- Moving a bullet to another role, or merging/splitting bullets.
-- Keyword stuffing, or claiming skills the candidate only lacks.
-
-Return every bullet id exactly once. Leave a bullet's text unchanged when it's already a good fit; most bullets should need little or no change.
-List the requirements from the job the candidate does not show in missing_requirements (so they can prepare), rather than hiding the gap.
-The cover letter: under 170 words, plain text, no placeholders, no salutation line such as "Dear Hiring Manager", only facts from the resume, specific to this company and role."""
 
 
 def resume_payload(resume: Resume) -> dict:
@@ -145,16 +126,6 @@ def resume_payload(resume: Resume) -> dict:
         payload["projects"].append({"name": p.name, "tech": p.tech,
                                     "bullets": [{"id": f"p{pi}b{bi}", "text": b} for bi, b in enumerate(p.bullets)]})
     return payload
-
-
-def request_plan(llm, resume: Resume, posting: JobPosting, allowed_extra: list[str], effort: str) -> TailorPlan:
-    user = (
-        f"<resume>\n{json.dumps(resume_payload(resume), indent=1)}\n</resume>\n\n"
-        f"<allowed_extra_skills>\n{json.dumps(allowed_extra)}\n</allowed_extra_skills>\n\n"
-        f"<job url=\"{posting.url}\">\nTitle: {posting.title}\nCompany: {posting.company}\n\n"
-        f"{posting.description}\n</job>"
-    )
-    return llm.structured(system=TAILOR_SYSTEM, user=user, schema=TailorPlan, effort=effort, max_tokens=24000)
 
 
 # ------------------------------------------------------------------ guardrails
@@ -268,9 +239,7 @@ def _check_cover_letter(text: str, base: Resume, vocab: TechVocabulary, extra_sk
     return text
 
 
-def tailor(llm, base: Resume, posting: JobPosting, *, other_resumes: list[Resume], extra_skills: list[str],
-           effort: str = "high") -> TailorResult:
-    other_skills = [s for r in other_resumes for s in r.all_skills()]
-    allowed_extra = sorted({*other_skills, *extra_skills} - set(base.all_skills()))
-    plan = request_plan(llm, base, posting, allowed_extra, effort)
-    return apply_plan(base, plan, other_resumes=other_resumes, extra_skills=extra_skills)
+def allowed_extra_skills(base: Resume, other_resumes, extra_skills) -> list[str]:
+    """Skills that may be added to `base`: those on your other resume plus profile extra_skills."""
+    other = [s for r in other_resumes for s in r.all_skills()]
+    return sorted({*other, *extra_skills} - set(base.all_skills()))
