@@ -54,6 +54,11 @@ curl -sG https://freehire.me/api/v1/jobs/search \
   --data-urlencode posted_within_days=14 --data-urlencode limit=50
 ```
 
+- **Location filters are ORed with each other**: `countries=in&cities=Hyderabad` means
+  "anywhere in India OR Hyderabad". For one city, send only `cities=Hyderabad`.
+  Use `countries=in` alone for all of India.
+- `experience_years_min` in freehire's tags is sometimes lower than what the posting
+  actually demands. Confirm the years in the full description before calling a job a fit.
 - Always check `meta.ignored_params` in the response. A misspelled filter is
   silently dropped and the results look broader than you meant.
 - Facet values (categories, skill slugs, cities, counts): `GET /jobs/facets` with the
