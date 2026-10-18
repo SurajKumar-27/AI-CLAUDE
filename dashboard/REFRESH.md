@@ -3,7 +3,9 @@
 Dashboard: https://claude.ai/artifact/MLwUrpFnpiq6hNDYJVogr9 (page source: `dashboard/job-radar.html`,
 data file published beside it as `jobs.json`).
 
-A scheduled Claude Code routine runs this every hour in a fresh cloud session:
+A scheduled Claude Code routine ("Job Radar hourly refresh", trigger `trig_014cDeJ4TUcegERaGZHz6Ba3`, at :04
+past every hour) wakes the session that built the dashboard and runs these steps there. (A fresh session per
+run was tried first and did not manage to republish the dashboard.)
 
 1. Read the dashboard with the Artifact tool (`action: "read"`, the URL above) and then
    its data file (`action: "read"`, `path: "jobs.json"`). Note where each was saved.
