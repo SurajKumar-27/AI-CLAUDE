@@ -6,7 +6,9 @@
 Searches Hyderabad, Bengaluru and Chennai plus remote jobs anywhere in India,
 for tech roles asking at most MAX_YEARS of experience. Merges the result with
 --prev (the file the dashboard currently serves), so each job keeps the time it
-was first seen, and drops jobs older than KEEP_DAYS or reported closed.
+was first seen, and drops jobs older than KEEP_DAYS. Every run also rechecks
+each remaining job with freehire and removes the ones whose posting has closed or
+disappeared, so only jobs you can still apply to stay on the dashboard.
 """
 from __future__ import annotations
 
@@ -21,6 +23,8 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 API = "https://freehire.me/api/v1/jobs/search"
+MCP = "https://freehire.me/api/v1/mcp"  # hosts check_jobs_open (no REST equivalent)
+UA = "job-dashboard/1.0"
 CITIES = ["Hyderabad", "Bengaluru", "Bangalore", "Chennai"]
 CATEGORIES = ["backend", "fullstack", "software_engineering", "ai_engineering", "ml_ai", "frontend",
               "data_engineering", "data_science", "devops", "sre", "mobile", "qa"]
@@ -40,7 +44,7 @@ def get(params: list[tuple[str, str]], retries: int = 3) -> dict:
     url = API + "?" + urllib.parse.urlencode(params)
     for attempt in range(retries):
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "job-dashboard/1.0", "Accept": "application/json"})
+            req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json"})
             with urllib.request.urlopen(req, timeout=40) as r:
                 return json.load(r)
         except Exception as e:  # noqa: BLE001 - network hiccups: retry, then give up loudly
@@ -65,6 +69,32 @@ def search(geo: list[tuple[str, str]], within_days: int) -> list[dict]:
         offset += 100
         if offset >= total or offset + 100 > 10000 or not page.get("data"):
             return out
+
+
+def still_open(slugs: list[str]) -> dict[str, str]:
+    """freehire's verdict per slug: open, closed or not_found. Slugs it couldn't check are left out."""
+    verdict: dict[str, str] = {}
+    for i in range(0, len(slugs), 50):
+        body = {"jsonrpc": "2.0", "id": i, "method": "tools/call",
+                "params": {"name": "check_jobs_open", "arguments": {"slugs": slugs[i:i + 50]}}}
+        req = urllib.request.Request(MCP, data=json.dumps(body).encode(), headers={
+            "Content-Type": "application/json", "Accept": "application/json, text/event-stream", "User-Agent": UA})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                raw = r.read().decode()
+        except Exception as e:  # noqa: BLE001 - on failure keep the jobs; never drop on doubt
+            print(f"open-check failed for a batch ({e}); keeping those jobs", file=sys.stderr)
+            continue
+        for line in raw.splitlines():
+            line = line[5:] if line.startswith("data:") else line
+            try:
+                result = json.loads(line).get("result") or {}
+            except ValueError:
+                continue
+            for item in (result.get("structuredContent") or {}).get("jobs", []):
+                if item.get("slug") and item.get("status"):
+                    verdict[item["slug"]] = item["status"]
+    return verdict
 
 
 def clean_url(url: str) -> str:
@@ -150,14 +180,21 @@ def main() -> int:
             new += 1
         merged[jid] = rec
 
+    # Drop postings that closed or vanished since they were added. Jobs fetched just now are open by definition.
+    verdict = still_open([jid for jid in merged if jid not in found])
+    gone = [jid for jid, v in verdict.items() if v in ("closed", "not_found")]
+    for jid in gone:
+        merged.pop(jid, None)
+
     jobs = sorted(merged.values(), key=lambda j: (j["first_seen"], j["posted_at"]), reverse=True)
     out = {"generated_at": now, "source": "freehire.me (github.com/strelov1/freehire)",
            "criteria": {"cities": ["Hyderabad", "Bengaluru", "Chennai"], "remote": "India", "max_years": MAX_YEARS,
                         "categories": CATEGORIES, "excluded_seniority": SENIOR, "keep_days": KEEP_DAYS},
-           "my_skills": [s for s in MY_SKILLS if s not in NOT_A_MATCH], "new_this_run": new, "jobs": jobs}
+           "my_skills": [s for s in MY_SKILLS if s not in NOT_A_MATCH], "new_this_run": new, "closed_removed": len(gone), "jobs": jobs}
     with open(args.out, "w", encoding="utf-8") as fh:
         json.dump(out, fh, ensure_ascii=False, separators=(",", ":"))
-    print(f"{len(jobs)} jobs ({new} new, {len(found)} fetched in the last {days} days) -> {args.out}")
+    print(f"{len(jobs)} jobs ({new} new, {len(gone)} closed removed, {len(found)} fetched in the last {days} days, "
+          f"{len(verdict)} rechecked) -> {args.out}")
     return 0
 
 

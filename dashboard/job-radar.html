@@ -204,7 +204,7 @@
       <button type="button" class="more" id="more" hidden>Show 40 more</button>
     </main>
   </div>
-  <footer>Jobs come from <a href="https://freehire.me" target="_blank" rel="noopener">freehire</a> (open source, <a href="https://github.com/strelov1/freehire" target="_blank" rel="noopener">github.com/strelov1/freehire</a>), straight from company career pages, and are refreshed every hour. Each "Apply on site" button opens the employer's own posting.</footer>
+  <footer>Jobs come from <a href="https://freehire.me" target="_blank" rel="noopener">freehire</a> (open source, <a href="https://github.com/strelov1/freehire" target="_blank" rel="noopener">github.com/strelov1/freehire</a>), straight from company career pages, and are refreshed every hour. Each refresh rechecks every job and removes postings that have closed. Each "Apply on site" button opens the employer's own posting.</footer>
 </div>
 
 <script>
@@ -417,6 +417,7 @@
       el("span", {}, $("dot"), "Refreshed ", el("b", { text: ago(DATA.generated_at) })),
       el("span", {}, el("b", { text: String(JOBS.length) }), " jobs on the radar"),
       prevVisit ? el("span", {}, el("b", { text: String(sinceVisit) }), " new since your last visit") : null,
+      DATA.closed_removed ? el("span", {}, el("b", { text: String(DATA.closed_removed) }), " closed postings removed in the last refresh") : null,
       el("span", { text: "Hyderabad · Bengaluru · Chennai · remote India · up to 3 yrs" })].filter(Boolean));
   }
 

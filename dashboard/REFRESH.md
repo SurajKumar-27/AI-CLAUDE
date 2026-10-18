@@ -11,7 +11,8 @@ run was tried first and did not manage to republish the dashboard.)
    its data file (`action: "read"`, `path: "jobs.json"`). Note where each was saved.
 2. `python3 -I scripts/fetch_jobs.py --prev <saved jobs.json> --out <scratchpad>/jobs.json`
    (standard library only; queries freehire's public API, merges, keeps each job's first-seen time,
-   drops jobs older than 21 days). If it fails, stop: never publish an empty or partial list.
+   drops jobs older than 21 days, and rechecks every remaining job with freehire's `check_jobs_open`,
+   removing postings that have closed or disappeared). If it fails, stop: never publish an empty or partial list.
 3. Republish to the same URL: `file_path` = the saved page file from step 1, `files` =
    `{"jobs.json": "<scratchpad>/jobs.json"}`, `url` = the URL above. Omit `capabilities`
    and `icon` so the page keeps them. Don't change the page itself.
