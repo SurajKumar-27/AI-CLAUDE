@@ -16,3 +16,10 @@ to each employer's posting.
 - **How it searches and ranks:** [`.claude/skills/find-jobs/SKILL.md`](.claude/skills/find-jobs/SKILL.md).
 
 Applying happens on the employer's site (or with freehire.me's own tools under your account).
+
+## Job Radar dashboard
+
+[Suraj's Job Radar](https://claude.ai/artifact/MLwUrpFnpiq6hNDYJVogr9) lists junior and mid-level tech jobs in
+Hyderabad, Bengaluru, Chennai and remote India, refreshed every hour from freehire, with filters and an
+"Apply on site" link on every job. `scripts/fetch_jobs.py` does the fetching; `dashboard/REFRESH.md`
+describes the hourly run.
