@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Your personal data (profile, resumes, application log) is committed only encrypted, as data.enc,
+# Your personal data (profile, resumes, job log) is committed only encrypted, as data.enc,
 # locked with the JOBBOT_STATE_KEY secret.
 #   scripts/data.sh encrypt   # data/ -> data.enc   (after editing data/*.yaml)
 #   scripts/data.sh decrypt   # data.enc -> data/
@@ -8,7 +8,7 @@ set -euo pipefail
 case "$1" in
   encrypt)
     files=(data/profile.yaml data/resumes/fullstack.yaml data/resumes/ai.yaml)
-    [ -f data/applications.jsonl ] && files+=(data/applications.jsonl)
+    for extra in data/applications.jsonl data/job-log.md; do [ -f "$extra" ] && files+=("$extra"); done
     tar -czf - "${files[@]}" \
       | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:JOBBOT_STATE_KEY -out data.enc
     ;;
