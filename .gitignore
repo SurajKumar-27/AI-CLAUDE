@@ -1,3 +1,4 @@
 # Personal data never goes into this (public) repo except encrypted, as data.enc.
 data/
 .env
+__pycache__/
