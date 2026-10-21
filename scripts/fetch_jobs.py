@@ -4,7 +4,9 @@
     python3 scripts/fetch_jobs.py --prev old/jobs.json --out jobs.json
 
 Searches Hyderabad, Bengaluru and Chennai plus remote jobs anywhere in India,
-for tech roles asking at most MAX_YEARS of experience. Merges the result with
+for tech roles asking at most MAX_YEARS of experience. freehire's experience tag
+sometimes understates a posting, so the years stated in the title, requirements
+and description are checked too, and senior-titled roles are dropped. Merges the result with
 --prev (the file the dashboard currently serves), so each job keeps the time it
 was first seen, and drops jobs older than KEEP_DAYS. Every run also rechecks
 each remaining job with freehire and removes the ones whose posting has closed or
@@ -38,6 +40,13 @@ MY_SKILLS = ["python", "fastapi", "nodejs", "typescript", "javascript", "react",
              "websockets", "machine-learning", "computer-vision", "git", "linux", "html", "css", "postman", "jira"]
 # Generic tags that every posting carries; they shouldn't count as a match.
 NOT_A_MATCH = {"git", "jira", "linux", "html", "css", "postman"}
+SENIOR_TITLE = re.compile(r"\b(senior|sr|lead|principal|staff|manager|architect|head|director|vp)\b", re.I)
+# "4+ years", "4-8 yrs", "3 to 5 years": group 1 is the minimum asked for.
+_N_YEARS = r"(\d{1,2})\s*(?:\+|plus|(?:-|–|—|to)\s*\d{1,2})?\s*\+?\s*(?:years?|yrs?)"
+YEARS_ANY = re.compile(_N_YEARS, re.I)
+# In free text, only count years tied to experience ("5+ years of Java experience", "at least 4 years").
+YEARS_EXP = re.compile(_N_YEARS + r"(?:'s)?\s+(?:of\s+)?(?:[\w/+#.,-]+\s+){0,4}?(?:experience|exp)\b"
+                       r"|(?:minimum|at least|min\.?)\s*(?:of\s*)?" + _N_YEARS, re.I)
 
 
 def get(params: list[tuple[str, str]], retries: int = 3) -> dict:
@@ -111,6 +120,18 @@ def summary_of(job: dict) -> str:
     return re.sub(r"\s+", " ", text).strip()[:420]
 
 
+def stated_years(title: str, requirements: list[str], text: str) -> int | None:
+    """The most years of experience a posting asks for, read from its own words (None if it never says)."""
+    found = [int(m.group(1)) for s in [title, *requirements] for m in YEARS_ANY.finditer(s)]
+    found += [int(m.group(1) or m.group(2)) for m in YEARS_EXP.finditer(text)]
+    found = [n for n in found if n <= 15]  # bigger numbers are company age ("25 years of innovation"), not a requirement
+    return max(found) if found else None
+
+
+def too_senior(rec: dict) -> bool:
+    return bool(SENIOR_TITLE.search(rec["title"])) or (rec["years"] or 0) > MAX_YEARS
+
+
 def where(job: dict) -> list[str]:
     places = set()
     text = " ".join([job.get("location") or ""] + (job.get("cities") or []))
@@ -126,11 +147,14 @@ def record(job: dict, now: str) -> dict:
     e = job.get("enrichment") or {}
     skills = job.get("skills") or []
     mine = [s for s in skills if s in MY_SKILLS and s not in NOT_A_MATCH]
+    reqs = [r.get("text") or "" for r in e.get("requirements") or [] if r.get("priority") in (None, "required")]
+    said = stated_years(job.get("title") or "", reqs, html.unescape(job.get("description") or ""))
+    years = max((y for y in (e.get("experience_years_min"), said) if y is not None), default=None)
     return {
         "id": job["public_slug"], "title": job.get("title") or "", "company": job.get("company") or "",
         "location": job.get("location") or "", "places": where(job), "work_mode": job.get("work_mode") or "",
         "category": e.get("category") or "", "seniority": e.get("seniority") or "",
-        "years": e.get("experience_years_min"), "employment": e.get("employment_type") or "",
+        "years": years, "employment": e.get("employment_type") or "",
         "skills": skills[:24], "matched": mine, "match": len(mine),
         "salary_min": e.get("salary_min"), "salary_max": e.get("salary_max"),
         "salary_currency": e.get("salary_currency") or "", "salary_period": e.get("salary_period") or "",
@@ -159,6 +183,7 @@ def main() -> int:
     days = args.days or (3 if prev else 14)
 
     found: dict[str, dict] = {}
+    senior = set()
     for geo in ([("cities", c) for c in CITIES], [("countries", "in"), ("work_mode", "remote")]):
         for job in search(geo, days):
             if job.get("closed_at"):
@@ -166,11 +191,24 @@ def main() -> int:
             rec = record(job, now)
             if not rec["places"] or not rec["url"]:
                 continue
+            if too_senior(rec):
+                senior.add(rec["id"])
+                continue
             found[rec["id"]] = rec
 
     cutoff = now_dt - timedelta(days=KEEP_DAYS)
     merged, new = {}, 0
     for jid, old in prev.items():
+        if jid in senior:
+            continue
+        if jid not in found:
+            # Not refetched this run, so check what the saved record still has (title and summary).
+            said = stated_years(old["title"], [], old.get("summary") or "")
+            if said is not None and said > (old["years"] or 0):
+                old["years"] = said
+            if too_senior(old):
+                senior.add(jid)
+                continue
         if datetime.fromisoformat(old["first_seen"]) >= cutoff:
             merged[jid] = old
     for jid, rec in found.items():
@@ -193,8 +231,8 @@ def main() -> int:
            "my_skills": [s for s in MY_SKILLS if s not in NOT_A_MATCH], "new_this_run": new, "closed_removed": len(gone), "jobs": jobs}
     with open(args.out, "w", encoding="utf-8") as fh:
         json.dump(out, fh, ensure_ascii=False, separators=(",", ":"))
-    print(f"{len(jobs)} jobs ({new} new, {len(gone)} closed removed, {len(found)} fetched in the last {days} days, "
-          f"{len(verdict)} rechecked) -> {args.out}")
+    print(f"{len(jobs)} jobs ({new} new, {len(gone)} closed removed, {len(senior)} skipped as over {MAX_YEARS} years "
+          f"or senior, {len(found)} fetched in the last {days} days, {len(verdict)} rechecked) -> {args.out}")
     return 0
 
 
